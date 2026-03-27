@@ -78,3 +78,25 @@
   font-size: 14px;
   color: rgba(255, 255, 255, 0.9);
 }
+
+.select {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 15px;
+}
+
+.select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.select option {
+  background: #1a1a2e;
+  color: #fff;
+}

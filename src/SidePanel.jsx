@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints }) {
+export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, effect, onEffectChange }) {
   return (
     <div className={styles.panel}>
       <h2 className={styles.title}>Settings</h2>
@@ -15,7 +14,7 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
           />
           <span className={styles.toggleSlider}></span>
         </label>
-        <span className={styles.label}>Plasma Effect</span>
+        <span className={styles.label}>Shader Effect</span>
       </div>
 
       <div className={styles.setting}>
@@ -28,6 +27,19 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
           <span className={styles.toggleSlider}></span>
         </label>
         <span className={styles.label}>Joints</span>
+      </div>
+
+      <div className={styles.setting}>
+        <select
+          className={styles.select}
+          value={effect}
+          onChange={(e) => onEffectChange(e.target.value)}
+        >
+          <option value="plasma">Plasma</option>
+          <option value="fire">Fire</option>
+          <option value="water">Water</option>
+          <option value="matrix">Matrix Rain</option>
+        </select>
       </div>
     </div>
   )
