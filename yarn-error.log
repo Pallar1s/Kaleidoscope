@@ -1,0 +1,47 @@
+Arguments: 
+  C:\Program Files\nodejs\node.exe C:\Program Files (x86)\Yarn\bin\yarn.js install
+
+PATH: 
+  C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin;C:\Users\dkvmo\bin;C:\Program Files\Common Files\Oracle\Java\javapath;C:\Program Files (x86)\Razer\ChromaBroadcast\bin;C:\Program Files\Razer\ChromaBroadcast\bin;C:\Python311\Scripts;C:\Python311;C:\Program Files (x86)\Common Files\Oracle\Java\javapath;C:\Python310\Scripts;C:\Python310;C:\Python39\Scripts;C:\Python39;C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\OpenSSH;C:\Program Files (x86)\NVIDIA Corporation\PhysX\Common;C:\Program Files\Microsoft SQL Server\130\Tools\Binn;C:\ProgramData\chocolatey\bin;C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\Wbem;C:\WINDOWS\System32\WindowsPowerShell\v1.0;C:\WINDOWS\System32\OpenSSH;C:\Program Files\Git\cmd;C:\Program Files\dotnet;C:\Program Files\TortoiseGit\bin;C:\Android;C:\Program Files (x86)\QuickTime\QTSystem;C:\Program Files (x86)\Yarn\bin;C:\Program Files (x86)\GitExtensions;C:\Program Files\nodejs;C:\Program Files\Git LFS;C:\Program Files\WireGuard;C:\Users\dkvmo\AppData\Local\Microsoft\WindowsApps;C:\Users\dkvmo\.dotnet\tools;C:\Users\dkvmo\AppData\Local\Microsoft\WindowsApps;C:\Users\dkvmo\.dotnet\tools;C:\Users\dkvmo\bin;C:\Users\dkvmo\.dotnet\tools;C:\Users\dkvmo\AppData\Local\Yarn\bin;C:\Users\dkvmo\AppData\Roaming\npm;C:\Program Files\NVIDIA Corporation\NVIDIA App\NvDLISR;C:\Users\dkvmo\AppData\Local\Microsoft\WindowsApps;C:\Users\dkvmo\.dotnet\tools;C:\Users\dkvmo\AppData\Local\Microsoft\WindowsApps;C:\Users\dkvmo\.dotnet\tools;C:\Users\dkvmo\bin;C:\Users\dkvmo\.dotnet\tools;C:\Users\dkvmo\AppData\Local\Yarn\bin;C:\Users\dkvmo\AppData\Roaming\npm;C:\Users\dkvmo\AppData\Local\Programs\Microsoft VS Code\bin;C:\Users\dkvmo\AppData\Local\Programs\cursor\resources\app\bin
+
+Yarn version: 
+  1.22.5
+
+Node version: 
+  16.15.1
+
+Platform: 
+  win32 x64
+
+Trace: 
+  Error: getaddrinfo ENOTFOUND registry.yarnpkg.com
+      at GetAddrInfoReqWrap.onlookup [as oncomplete] (node:dns:71:26)
+
+npm manifest: 
+  {
+    "name": "kaleidoscope",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+      "dev": "vite",
+      "build": "vite build",
+      "preview": "vite preview"
+    },
+    "dependencies": {
+      "react": "^18.2.0",
+      "react-dom": "^18.2.0"
+    },
+    "devDependencies": {
+      "@types/react": "^18.2.0",
+      "@types/react-dom": "^18.2.0",
+      "@vitejs/plugin-react": "^4.2.0",
+      "vite": "^5.0.0"
+    }
+  }
+
+yarn manifest: 
+  No manifest
+
+Lockfile: 
+  No lockfile
