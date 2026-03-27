@@ -1,10 +1,25 @@
-import { vertexShaderSource, plasmaFragmentShader } from './shaders/plasma'
-import { fireFragmentShader } from './shaders/fire'
-import { waterFragmentShader } from './shaders/water'
-import { matrixFragmentShader } from './shaders/matrix'
-
 const JOINTS_WIDTH = 5
 const JOINT_END_SIZE = 10
+
+const VERTEX_SHADER_SOURCE = `
+  attribute vec2 a_position;
+  void main() {
+    gl_Position = vec4(a_position, 0.0, 1.0);
+  }
+`
+
+const shaderModules = import.meta.glob('./shaders/*.js', { eager: true })
+
+function parseColor(color) {
+  if (!color || color.length !== 9) return { r: 255, g: 255, b: 255, a: 255 }
+  
+  const alpha = parseInt(color.substring(1, 3), 16)
+  const r = parseInt(color.substring(3, 5), 16)
+  const g = parseInt(color.substring(5, 7), 16)
+  const b = parseInt(color.substring(7, 9), 16)
+  
+  return { r, g, b, a: alpha }
+}
 
 function createShader(gl, type, source) {
   const shader = gl.createShader(type)
@@ -32,7 +47,7 @@ function createProgram(gl, vertexShader, fragmentShader) {
 }
 
 function createShaderProgram(gl, fragmentShaderSource) {
-  const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexShaderSource)
+  const vertexShader = createShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE)
   const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragmentShaderSource)
   if (!vertexShader || !fragmentShader) return null
   
@@ -59,6 +74,28 @@ function createShaderProgram(gl, fragmentShaderSource) {
   }
 }
 
+function discoverShaders() {
+  const shaders = []
+  
+  for (const path in shaderModules) {
+    const module = shaderModules[path]
+    const fileName = path.split('/').pop().replace('.js', '')
+    
+    const fragmentKey = Object.keys(module).find(key => key.endsWith('FragmentShader'))
+    
+    if (fragmentKey) {
+      shaders.push({
+        name: fileName,
+        fragmentShader: module[fragmentKey]
+      })
+    }
+  }
+  
+  return shaders
+}
+
+export const availableShaders = discoverShaders()
+
 export function initWebGL(canvas, trailCanvas) {
   const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
   if (!gl) {
@@ -66,15 +103,17 @@ export function initWebGL(canvas, trailCanvas) {
     return null
   }
 
-  const programs = {
-    plasma: createShaderProgram(gl, plasmaFragmentShader),
-    fire: createShaderProgram(gl, fireFragmentShader),
-    water: createShaderProgram(gl, waterFragmentShader),
-    matrix: createShaderProgram(gl, matrixFragmentShader)
+  const programs = {}
+  
+  for (const shader of availableShaders) {
+    programs[shader.name] = createShaderProgram(gl, shader.fragmentShader)
+    if (!programs[shader.name]) {
+      console.error(`Failed to create shader program: ${shader.name}`)
+    }
   }
 
-  if (!programs.plasma || !programs.fire || !programs.water || !programs.matrix) {
-    console.error('Failed to create shader programs')
+  if (Object.keys(programs).length === 0) {
+    console.error('No shader programs created')
     return null
   }
 
@@ -104,11 +143,12 @@ export function renderTrail(webgl, joints, prevJoints) {
   
   if (!trailCtx || !joints || !prevJoints) return
   
-  trailCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
   trailCtx.lineWidth = 2
   
   joints.forEach((joint, index) => {
-    if (prevJoints[index]) {
+    if (joint.enabled && prevJoints[index]) {
+      const color = parseColor(joint.color)
+      trailCtx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`
       trailCtx.beginPath()
       trailCtx.moveTo(prevJoints[index].endX, prevJoints[index].endY)
       trailCtx.lineTo(joint.endX, joint.endY)

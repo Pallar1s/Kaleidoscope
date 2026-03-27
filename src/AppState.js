@@ -1,4 +1,5 @@
 import presets from '../presets/presets.json'
+import { Matrix3x2 } from './Matrix3x2'
 
 class AppState {
   constructor() {
@@ -16,12 +17,11 @@ class AppState {
     const totalSize = preset.Joints.reduce((sum, j) => sum + j.Size, 0)
     
     this.joints = preset.Joints.map((j) => ({
-      lengthRatio: (j.Size / totalSize) * 100,
+      lengthRatio: j.Size / totalSize,
       rotation: 0,
       speed: j.Speed,
       enabled: j.Enabled,
-      color: j.JointColor,
-      showTrace: j.ShowTrace
+      color: j.JointColor
     }))
     
     this.currentPresetIndex = index
@@ -43,31 +43,39 @@ class AppState {
   }
 
   calculateJoints(screenWidth, screenHeight) {
-    const totalRatio = this.joints.reduce((sum, j) => sum + j.lengthRatio, 0)
+    const totalRatio = this.joints.reduce((sum, j) => sum + j.lengthRatio * 100, 0)
     const halfMin = Math.min(screenWidth, screenHeight) / 2
     const dpr = window.devicePixelRatio || 1
 
-    let startX = screenWidth / 2 * dpr
-    let startY = screenHeight / 2 * dpr
+    const centerX = screenWidth / 2 * dpr
+    const centerY = screenHeight / 2 * dpr
+
+    let currentTransform = Matrix3x2.createTranslation(centerX, centerY)
+    let prevPosition = { x: centerX, y: centerY }
     const result = []
 
     this.joints.forEach((joint) => {
-      const length = halfMin * (joint.lengthRatio / totalRatio)
-      const angleRad = (joint.rotation * Math.PI) / 180
-      const endX = startX + Math.cos(angleRad) * length
-      const endY = startY + Math.sin(angleRad) * length
+      const radians = (joint.rotation * Math.PI) / 180
+      const size = halfMin * (100 * joint.lengthRatio / totalRatio)
+
+      const rotation = Matrix3x2.createRotation(radians)
+      const translation = Matrix3x2.createTranslation(0, size)
+      currentTransform = translation.multiply(rotation).multiply(currentTransform)
+
+      const pos = currentTransform.getTranslation()
 
       result.push({
-        startX,
-        startY,
-        endX,
-        endY,
-        length,
-        angleRad
+        startX: prevPosition.x,
+        startY: prevPosition.y,
+        endX: pos.x,
+        endY: pos.y,
+        length: size,
+        angleRad: radians,
+        enabled: joint.enabled,
+        color: joint.color
       })
 
-      startX = endX
-      startY = endY
+      prevPosition = pos
     })
 
     return result

@@ -1,6 +1,6 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange }) {
+export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames }) {
   return (
     <div className={styles.panel}>
       <h2 className={styles.title}>Settings</h2>
@@ -60,10 +60,9 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
           value={effect}
           onChange={(e) => onEffectChange(e.target.value)}
         >
-          <option value="plasma">Plasma</option>
-          <option value="fire">Fire</option>
-          <option value="water">Water</option>
-          <option value="matrix">Matrix Rain</option>
+          {shaderNames.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
         </select>
       </div>
     </div>

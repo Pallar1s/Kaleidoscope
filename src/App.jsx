@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import SidePanel from './SidePanel'
 import AppState from './AppState'
-import { initWebGL, renderWebGL, renderTrail, resizeCanvas, resizeTrailCanvas, renderJoints } from './renderer'
+import { initWebGL, renderWebGL, renderTrail, resizeCanvas, resizeTrailCanvas, renderJoints, availableShaders } from './renderer'
 
 export default function App() {
   const [shaderEnabled, setShaderEnabled] = useState(true)
@@ -115,7 +115,7 @@ export default function App() {
       renderWebGL(webgl, time, effectRef.current)
     }
 
-    if (webgl && jointsEnabledRef.current) {
+    if (webgl) {
       renderTrail(webgl, joints, prevJointsRef.current)
     }
 
@@ -198,6 +198,7 @@ export default function App() {
         presetNames={appStateRef.current.getPresetNames()}
         selectedPreset={selectedPreset}
         onPresetChange={handlePresetChange}
+        shaderNames={availableShaders.map(s => s.name)}
       />
     </>
   )
