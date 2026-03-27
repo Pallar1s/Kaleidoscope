@@ -1,10 +1,19 @@
 export const common = `
+#version 300 es
+precision highp float;
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform int u_frame;
+uniform vec4 u_mouse;
+
+#define iTime u_time
+#define iResolution u_resolution
+#define iFrame u_frame
+#define iMouse u_mouse
+
 #define dt 0.15
 #define USE_VORTICITY_CONFINEMENT
-//#define MOUSE_ONLY
 
-//Recommended values between 0.03 and 0.2
-//higher values simulate lower viscosity fluids (think billowing smoke)
 #define VORTICITY_AMOUNT 0.11
 
 float mag2(vec2 p){return dot(p,p);}
@@ -22,31 +31,24 @@ vec4 solveFluid(sampler2D smp, vec2 uv, vec2 w, float time, vec3 mouse, vec3 las
 	const float K = 0.2;
 	const float v = 0.55;
     
-    vec4 data = textureLod(smp, uv, 0.0);
-    vec4 tr = textureLod(smp, uv + vec2(w.x , 0), 0.0);
-    vec4 tl = textureLod(smp, uv - vec2(w.x , 0), 0.0);
-    vec4 tu = textureLod(smp, uv + vec2(0 , w.y), 0.0);
-    vec4 td = textureLod(smp, uv - vec2(0 , w.y), 0.0);
+    vec4 data = texture(smp, uv);
+    vec4 tr = texture(smp, uv + vec2(w.x , 0));
+    vec4 tl = texture(smp, uv - vec2(w.x , 0));
+    vec4 tu = texture(smp, uv + vec2(0 , w.y));
+    vec4 td = texture(smp, uv - vec2(0 , w.y));
     
     vec3 dx = (tr.xyz - tl.xyz)*0.5;
     vec3 dy = (tu.xyz - td.xyz)*0.5;
     vec2 densDif = vec2(dx.z ,dy.z);
     
-    data.z -= dt*dot(vec3(densDif, dx.x + dy.y) ,data.xyz); //density
+    data.z -= dt*dot(vec3(densDif, dx.x + dy.y) ,data.xyz);
     vec2 laplacian = tu.xy + td.xy + tr.xy + tl.xy - 4.0*data.xy;
     vec2 viscForce = vec2(v)*laplacian;
-    data.xyw = textureLod(smp, uv - dt*data.xy*w, 0.).xyw; //advection
+    data.xyw = texture(smp, uv - dt*data.xy*w).xyw;
     
     vec2 newForce = vec2(0);
-    #ifndef MOUSE_ONLY
-    #if 1
     newForce.xy += 0.75*vec2(.0003, 0.00015)/(mag2(uv-point1(time))+0.0001);
     newForce.xy -= 0.75*vec2(.0003, 0.00015)/(mag2(uv-point2(time))+0.0001);
-    #else
-    newForce.xy += 0.9*vec2(.0003, 0.00015)/(mag2(uv-point1(time))+0.0002);
-    newForce.xy -= 0.9*vec2(.0003, 0.00015)/(mag2(uv-point2(time))+0.0002);
-    #endif
-    #endif
     
     if (mouse.z > 1. && lastMouse.z > 1.)
     {
@@ -54,17 +56,15 @@ vec4 solveFluid(sampler2D smp, vec2 uv, vec2 w, float time, vec3 mouse, vec3 las
         newForce.xy += .001/(mag2(uv - mouse.xy*w)+0.001)*vv;
     }
     
-    data.xy += dt*(viscForce.xy - K/dt*densDif + newForce); //update velocity
-    data.xy = max(vec2(0), abs(data.xy)-1e-4)*sign(data.xy); //linear velocity decay
+    data.xy += dt*(viscForce.xy - K/dt*densDif + newForce);
+    data.xy = max(vec2(0), abs(data.xy)-1e-4)*sign(data.xy);
     
-    #ifdef USE_VORTICITY_CONFINEMENT
-   	data.w = (tr.y - tl.y - tu.x + td.x);
+    data.w = (tr.y - tl.y - tu.x + td.x);
     vec2 vort = vec2(abs(tu.w) - abs(td.w), abs(tl.w) - abs(tr.w));
     vort *= VORTICITY_AMOUNT/length(vort + 1e-9)*data.w;
     data.xy += vort;
-    #endif
     
-    data.y *= smoothstep(.5,.48,abs(uv.y-0.5)); //Boundaries
+    data.y *= smoothstep(.5,.48,abs(uv.y-0.5));
     
     data = clamp(data, vec4(vec2(-10), 0.5 , -10.), vec4(vec2(10), 3.0 , 10.));
     
@@ -72,16 +72,14 @@ vec4 solveFluid(sampler2D smp, vec2 uv, vec2 w, float time, vec3 mouse, vec3 las
 }
 `
 
-export const bufferAFragmentShader = common + `
-float length2(vec2 p){return dot(p,p);}
-mat2 mm2(in float a){float c = cos(a), s = sin(a);return mat2(c,s,-s,c);}
+export const bufferAFragmentShader = `
+uniform sampler2D iChannel0;
 
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    vec2 uv = fragCoord.xy/iResolution.xy;
+void main() {
+    vec2 uv = gl_FragCoord.xy / iResolution.xy;
     vec2 w = 1.0/iResolution.xy;
     
-    vec4 lastMouse = texelFetch(iChannel0, ivec2(0,0), 0);
+    vec4 lastMouse = texture(iChannel0, vec2(0.5, 0.5) / iResolution.xy);
     vec4 data = solveFluid(iChannel0, uv, w, iTime, iMouse.xyz, lastMouse.xyz);
     
     if (iFrame < 20)
@@ -89,24 +87,21 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         data = vec4(0.5,0,0,0);
     }
     
-    if (fragCoord.y < 1.)
+    if (gl_FragCoord.y < 1.)
         data = iMouse;
     
-    fragColor = data;
-    
+    gl_FragColor = data;
 }
 `
 
-export const bufferBFragmentShader = common + `
-float length2(vec2 p){return dot(p,p);}
-mat2 mm2(in float a){float c = cos(a), s = sin(a);return mat2(c,s,-s,c);}
+export const bufferBFragmentShader = `
+uniform sampler2D iChannel0;
 
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    vec2 uv = fragCoord.xy/iResolution.xy;
+void main() {
+    vec2 uv = gl_FragCoord.xy / iResolution.xy;
     vec2 w = 1.0/iResolution.xy;
     
-    vec4 lastMouse = texelFetch(iChannel0, ivec2(0,0), 0);
+    vec4 lastMouse = texture(iChannel0, vec2(0.5, 0.5) / iResolution.xy);
     vec4 data = solveFluid(iChannel0, uv, w, iTime, iMouse.xyz, lastMouse.xyz);
     
     if (iFrame < 20)
@@ -114,24 +109,21 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         data = vec4(0.5,0,0,0);
     }
     
-    if (fragCoord.y < 1.)
+    if (gl_FragCoord.y < 1.)
         data = iMouse;
     
-    fragColor = data;
-    
+    gl_FragColor = data;
 }
 `
 
-export const bufferCFragmentShader = common + `
-float length2(vec2 p){return dot(p,p);}
-mat2 mm2(in float a){float c = cos(a), s = sin(a);return mat2(c,s,-s,c);}
+export const bufferCFragmentShader = `
+uniform sampler2D iChannel0;
 
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    vec2 uv = fragCoord.xy/iResolution.xy;
+void main() {
+    vec2 uv = gl_FragCoord.xy / iResolution.xy;
     vec2 w = 1.0/iResolution.xy;
     
-    vec4 lastMouse = texelFetch(iChannel0, ivec2(0,0), 0);
+    vec4 lastMouse = texture(iChannel0, vec2(0.5, 0.5) / iResolution.xy);
     vec4 data = solveFluid(iChannel0, uv, w, iTime, iMouse.xyz, lastMouse.xyz);
     
     if (iFrame < 20)
@@ -139,18 +131,17 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         data = vec4(0.5,0,0,0);
     }
     
-    if (fragCoord.y < 1.)
+    if (gl_FragCoord.y < 1.)
         data = iMouse;
     
-    fragColor = data;
-    
+    gl_FragColor = data;
 }
 `
 
-export const bufferDFragmentShader = common + `
-mat2 mm2(in float a){float c = cos(a), s = sin(a);return mat2(c,s,-s,c);}
+export const bufferDFragmentShader = `
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
 
-//shader incoming relating to this palette
 vec3 getPalette(float x, vec3 c1, vec3 c2, vec3 p1, vec3 p2)
 {
     float x2 = fract(x/2.0);
@@ -174,17 +165,16 @@ vec4 pal2(float x)
     return vec4(pal, 1.);
 }
 
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    vec2 uv = fragCoord.xy / iResolution.xy;
+void main() {
+    vec2 uv = gl_FragCoord.xy / iResolution.xy;
     vec2 mo = iMouse.xy / iResolution.xy;
     vec2 w = 1.0/iResolution.xy;
     
-    vec2 velo = textureLod(iChannel0, uv, 0.).xy;
-    vec4 col = textureLod(iChannel1, uv - dt*velo*w*3., 0.); //advection
-    if (fragCoord.y < 1. && fragCoord.x < 1.)
+    vec2 velo = texture(iChannel0, uv).xy;
+    vec4 col = texture(iChannel1, uv - dt*velo*w*3.);
+    if (gl_FragCoord.y < 1. && gl_FragCoord.x < 1.)
         col = vec4(0);
-    vec4 lastMouse = texelFetch(iChannel1, ivec2(0,0), 0).xyzw;
+    vec4 lastMouse = texture(iChannel1, vec2(0.5, 0.5) / iResolution.xy);
     
     if (iMouse.z > 1. && lastMouse.z > 1.)
     {
@@ -192,11 +182,8 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         col += str*0.0009/(pow(length(uv - mo),1.7)+0.002)*pal2(-iTime*0.7);
     }
     
-    #ifndef MOUSE_ONLY
     col += .0025/(0.0005+pow(length(uv - point1(iTime)),1.75))*dt*0.12*pal(iTime*0.05 - .0);
     col += .0025/(0.0005+pow(length(uv - point2(iTime)),1.75))*dt*0.12*pal2(iTime*0.05 + 0.675);
-    #endif
-    
     
     if (iFrame < 20)
     {
@@ -204,30 +191,37 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     }
     
     col = clamp(col, 0.,5.);
-    col = max(col - (0.0001 + col*0.004)*.5, 0.); //decay
+    col = max(col - (0.0001 + col*0.004)*.5, 0.);
     
-    if (fragCoord.y < 1. && fragCoord.x < 1.)
+    if (gl_FragCoord.y < 1. && gl_FragCoord.x < 1.)
         col = iMouse;
 
-    fragColor = col;
-    
+    gl_FragColor = col;
 }
 `
 
-export const imageFragmentShader = common + `
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-    vec4 col = textureLod(iChannel0, fragCoord/iResolution.xy, 0.);
-    if (fragCoord.y < 1. || fragCoord.y >= (iResolution.y-1.))
+export const imageFragmentShader = `
+uniform sampler2D iChannel0;
+
+void main() {
+    vec2 uv = gl_FragCoord.xy / iResolution.xy;
+    vec4 col = texture(iChannel0, uv);
+    if (gl_FragCoord.y < 1. || gl_FragCoord.y >= (iResolution.y-1.))
         col = vec4(0);
-    fragColor = col;
+    gl_FragColor = col;
 }
 `
 
+// Маппинг как на ShaderToy:
+// Buffer A: iChannel0 = C
+// Buffer B: iChannel0 = A
+// Buffer C: iChannel0 = B
+// Buffer D: iChannel0 = A, iChannel1 = D
+// Image: iChannel0 = D
 export const channels = {
-  buffera: { iChannel0: 'self' },
-  bufferb: { iChannel0: 'self' },
-  bufferc: { iChannel0: 'self' },
-  bufferd: { iChannel0: 'bufferc', iChannel1: 'self' },
+  buffera: { iChannel0: 'bufferc' },
+  bufferb: { iChannel0: 'buffera' },
+  bufferc: { iChannel0: 'bufferb' },
+  bufferd: { iChannel0: 'buffera', iChannel1: 'bufferd' },
   image: { iChannel0: 'bufferd' }
 }
