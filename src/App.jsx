@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import SidePanel from './SidePanel'
 import AppState from './AppState'
-import { initWebGL, renderWebGL, renderTrail, resizeCanvas, resizeTrailCanvas, renderJoints, availableShaders } from './renderer'
+import { initWebGL, renderWebGL, renderTrail, resizeCanvas, resizeTrailCanvas, resizeFBOs, renderJoints, availableShaders } from './renderer'
 
 export default function App() {
   const [shaderEnabled, setShaderEnabled] = useState(true)
@@ -16,6 +16,7 @@ export default function App() {
   const webglRef = useRef(null)
   const rafRef = useRef(null)
   const lastTimeRef = useRef(0)
+  const deltaTimeRef = useRef(0.016)
   const prevJointsRef = useRef(null)
   const prevEmitterRef = useRef(null)
   const appStateRef = useRef(new AppState())
@@ -73,6 +74,7 @@ export default function App() {
     const webgl = webglRef.current
     if (canvas && webgl) {
       resizeCanvas(canvas, webgl.gl)
+      resizeFBOs(webgl.gl, webgl.fbos, canvas.width, canvas.height)
     }
     const trailCanvas = trailCanvasRef.current
     if (trailCanvas) {
@@ -105,6 +107,7 @@ export default function App() {
 
     if (lastTimeRef.current > 0 && !isPausedRef.current) {
       const deltaTime = time - lastTimeRef.current
+      deltaTimeRef.current = deltaTime / 1000
       appStateRef.current.updateJoints(deltaTime, speedMultiplierRef.current)
     }
     lastTimeRef.current = time
@@ -126,7 +129,8 @@ export default function App() {
         lastJoint ? lastJoint.endX : null,
         lastJoint ? lastJoint.endY : null,
         velX,
-        velY
+        velY,
+        deltaTimeRef.current
       )
       if (lastJoint) {
         prevEmitterRef.current = { x: lastJoint.endX, y: lastJoint.endY }

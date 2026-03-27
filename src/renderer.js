@@ -65,21 +65,87 @@ function createShaderProgram(gl, fragmentShaderSource) {
   gl.enableVertexAttribArray(positionLocation)
   gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
 
-  const uniforms = {
-    time: gl.getUniformLocation(program, 'u_time'),
-    resolution: gl.getUniformLocation(program, 'u_resolution')
+  const err = gl.getError()
+  if (err !== gl.NO_ERROR) {
+    console.error('WebGL error after creating program:', err)
   }
 
-  const emitterX = gl.getUniformLocation(program, 'u_emitterX')
-  const emitterY = gl.getUniformLocation(program, 'u_emitterY')
-  const emitterVelX = gl.getUniformLocation(program, 'u_emitterVelX')
-  const emitterVelY = gl.getUniformLocation(program, 'u_emitterVelY')
-  if (emitterX) uniforms.emitterX = emitterX
-  if (emitterY) uniforms.emitterY = emitterY
-  if (emitterVelX) uniforms.emitterVelX = emitterVelX
-  if (emitterVelY) uniforms.emitterVelY = emitterVelY
+  return program
+}
 
-  return { program, uniforms }
+function getUniforms(gl, program) {
+  return {
+    u_time: gl.getUniformLocation(program, 'u_time'),
+    u_resolution: gl.getUniformLocation(program, 'u_resolution'),
+    u_emitterX: gl.getUniformLocation(program, 'u_emitterX'),
+    u_emitterY: gl.getUniformLocation(program, 'u_emitterY'),
+    u_emitterVelX: gl.getUniformLocation(program, 'u_emitterVelX'),
+    u_emitterVelY: gl.getUniformLocation(program, 'u_emitterVelY'),
+    u_mouse: gl.getUniformLocation(program, 'u_mouse'),
+    u_timeDelta: gl.getUniformLocation(program, 'u_timeDelta'),
+    u_frameRate: gl.getUniformLocation(program, 'u_frameRate'),
+    u_frame: gl.getUniformLocation(program, 'u_frame'),
+    u_sampleRate: gl.getUniformLocation(program, 'u_sampleRate'),
+    iChannel0: gl.getUniformLocation(program, 'iChannel0'),
+    iChannel1: gl.getUniformLocation(program, 'iChannel1'),
+    iChannel2: gl.getUniformLocation(program, 'iChannel2'),
+    iChannel3: gl.getUniformLocation(program, 'iChannel3')
+  }
+}
+
+function createFBO(gl, width, height) {
+  const texture = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+  const framebuffer = gl.createFramebuffer()
+  gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+
+  return { texture, framebuffer }
+}
+
+function createBufferPassFBOs(gl, width, height) {
+  return {
+    ping: createFBO(gl, width, height),
+    pong: createFBO(gl, width, height),
+    current: 0
+  }
+}
+
+const BUFFER_ORDER = ['buffera', 'bufferb', 'bufferc', 'bufferd']
+
+const BUFFER_CHANNELS = {
+  buffera: { iChannel0: 'self', iChannel1: 'noise' },
+  bufferb: { iChannel0: 'buffera', iChannel1: 'noise' },
+  bufferc: { iChannel0: 'bufferb', iChannel1: 'noise' },
+  bufferd: { iChannel0: 'bufferc', iChannel1: 'noise' }
+}
+
+function createNoiseTexture(gl, size = 256) {
+  const data = new Uint8Array(size * size * 4)
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = Math.random() * 256
+    data[i + 1] = Math.random() * 256
+    data[i + 2] = Math.random() * 256
+    data[i + 3] = 255
+  }
+
+  const texture = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, data)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT)
+
+  return texture
 }
 
 function discoverShaders() {
@@ -89,12 +155,38 @@ function discoverShaders() {
     const module = shaderModules[path]
     const fileName = path.split('/').pop().replace('.js', '')
     
-    const fragmentKey = Object.keys(module).find(key => key.endsWith('FragmentShader'))
+    const keys = Object.keys(module).filter(key => key.endsWith('FragmentShader'))
     
-    if (fragmentKey) {
+    if (keys.length > 1) {
+      const common = module.common || ''
+      const channels = module.channels || {}
+      const passes = {}
+      
+      for (const key of keys) {
+        const passName = key.replace('FragmentShader', '').toLowerCase()
+        
+        let channelConfig = channels[passName] || {}
+        if (Object.keys(channelConfig).length === 0) {
+          for (const chKey of Object.keys(channels)) {
+            if (chKey.toLowerCase() === passName) {
+              channelConfig = channels[chKey]
+              break
+            }
+          }
+        }
+        
+        passes[passName] = {
+          fragmentShader: common + module[key],
+          channels: channelConfig
+        }
+      }
+      
+      shaders.push({ name: fileName, type: 'multi', passes })
+    } else if (keys.length === 1) {
       shaders.push({
         name: fileName,
-        fragmentShader: module[fragmentKey]
+        type: 'single',
+        fragmentShader: module[keys[0]]
       })
     }
   }
@@ -106,64 +198,241 @@ export const availableShaders = discoverShaders()
 
 export function initWebGL(canvas, trailCanvas) {
   const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-  if (!gl) {
-    console.error('WebGL not supported')
-    return null
+  if (!gl) return null
+
+  const shaderPrograms = {}
+  const noiseTexture = createNoiseTexture(gl)
+  const fbos = {
+    buffera: { ping: null, pong: null, current: 0 },
+    bufferb: { ping: null, pong: null, current: 0 },
+    bufferc: { ping: null, pong: null, current: 0 },
+    bufferd: { ping: null, pong: null, current: 0 }
   }
 
-  const programs = {}
-  
   for (const shader of availableShaders) {
-    programs[shader.name] = createShaderProgram(gl, shader.fragmentShader)
-    if (!programs[shader.name]) {
-      console.error(`Failed to create shader program: ${shader.name}`)
+    if (shader.type === 'multi') {
+      shaderPrograms[shader.name] = { type: 'multi', passes: {} }
+      
+      for (const [passName, pass] of Object.entries(shader.passes)) {
+        const program = createShaderProgram(gl, pass.fragmentShader)
+        if (program) {
+          shaderPrograms[shader.name].passes[passName] = {
+            program,
+            uniforms: getUniforms(gl, program)
+          }
+        }
+      }
+    } else {
+      const program = createShaderProgram(gl, shader.fragmentShader)
+      if (program) {
+        shaderPrograms[shader.name] = {
+          type: 'single',
+          program,
+          uniforms: getUniforms(gl, program)
+        }
+      }
     }
-  }
-
-  if (Object.keys(programs).length === 0) {
-    console.error('No shader programs created')
-    return null
   }
 
   const trailCtx = trailCanvas.getContext('2d')
 
-  return { gl, programs, trailCtx }
+  return { gl, shaderPrograms, noiseTexture, fbos, trailCtx }
 }
 
-export function renderWebGL(webgl, time, effect = 'plasma', emitterX = null, emitterY = null, emitterVelX = null, emitterVelY = null) {
-  const { gl, programs } = webgl
+function setUniforms(gl, uniforms, width, height, time, extra) {
+  const u = uniforms
+  
+  if (u.u_time) gl.uniform1f(u.u_time, time * 0.001)
+  if (u.u_resolution) gl.uniform2f(u.u_resolution, width, height)
+  if (u.u_timeDelta && extra.timeDelta) gl.uniform1f(u.u_timeDelta, extra.timeDelta)
+  if (u.u_frameRate && extra.frameRate) gl.uniform1f(u.u_frameRate, extra.frameRate)
+  if (u.u_frame) gl.uniform1i(u.u_frame, extra.frame || 0)
+  if (u.u_sampleRate) gl.uniform1f(u.u_sampleRate, 44100)
+  
+  if (u.u_emitterX && extra.emitterX !== undefined) gl.uniform1f(u.u_emitterX, extra.emitterX)
+  if (u.u_emitterY && extra.emitterY !== undefined) gl.uniform1f(u.u_emitterY, extra.emitterY)
+  if (u.u_emitterVelX && extra.emitterVelX !== undefined) gl.uniform1f(u.u_emitterVelX, extra.emitterVelX)
+  if (u.u_emitterVelY && extra.emitterVelY !== undefined) gl.uniform1f(u.u_emitterVelY, extra.emitterVelY)
+}
+
+function bindChannel(gl, uniforms, name, texture, unit) {
+  const location = uniforms[name]
+  if (location === null || location === undefined) return
+  if (!texture) return
+  gl.activeTexture(gl.TEXTURE0 + unit)
+  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.uniform1i(location, unit)
+}
+
+function drawQuad(gl, uniforms, width, height, time, extra) {
+  setUniforms(gl, uniforms, width, height, time, extra)
+  gl.drawArrays(gl.TRIANGLES, 0, 6)
+}
+
+export function resizeFBOs(gl, fbos, width, height) {
+  for (const bufferName of BUFFER_ORDER) {
+    const fbo = fbos[bufferName]
+    if (fbo.ping) {
+      gl.deleteTexture(fbo.ping.texture)
+      gl.deleteFramebuffer(fbo.ping.framebuffer)
+      gl.deleteTexture(fbo.pong.texture)
+      gl.deleteFramebuffer(fbo.pong.framebuffer)
+    }
+    fbos[bufferName] = createBufferPassFBOs(gl, width, height)
+  }
+}
+
+function getBufferTexture(fbos, bufferName) {
+  if (!bufferName || bufferName === 'self') return null
+  const fbo = fbos[bufferName]
+  if (!fbo || !fbo.ping) return null
+  return fbo.current === 0 ? fbo.pong.texture : fbo.ping.texture
+}
+
+function getCurrentFBO(fbos, bufferName) {
+  if (!bufferName) return null
+  const fbo = fbos[bufferName]
+  return fbo ? fbo.current : 0
+}
+
+function getFBOOutput(fbos, bufferName) {
+  if (!bufferName) return null
+  const fbo = fbos[bufferName]
+  return fbo ? fbo.ping.texture : null
+}
+
+function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, height, time, extra) {
+  const pass = shader.passes[passName]
+  if (!pass) return null
+
+  const fbo = fbos[passName]
+  const inputFBO = fbo.current === 0 ? fbo.ping : fbo.pong
+  const outputFBO = fbo.current === 0 ? fbo.pong : fbo.ping
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO.framebuffer)
+  gl.viewport(0, 0, width, height)
+
+  gl.useProgram(pass.program)
+
+  const defaultChannels = BUFFER_CHANNELS[passName] || {}
+  const customChannels = pass.channels || {}
+  const channels = { ...defaultChannels, ...customChannels }
+  
+  for (let i = 0; i < 4; i++) {
+    const channelName = `iChannel${i}`
+    const channelDef = channels[channelName]
+    const loc = pass.uniforms[channelName]
+    
+    if (channelDef && loc !== null && loc !== undefined) {
+      let texture = noiseTexture
+      if (channelDef === 'self') {
+        texture = inputFBO.texture
+      } else if (channelDef !== 'noise') {
+        texture = getBufferTexture(fbos, channelDef) || noiseTexture
+      }
+      if (texture) {
+        bindChannel(gl, pass.uniforms, channelName, texture, i)
+      }
+    }
+  }
+
+  drawQuad(gl, pass.uniforms, width, height, time, extra)
+
+  fbos[passName].current = 1 - fbos[passName].current
+
+  return outputFBO.texture
+}
+
+export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016) {
+  const { gl, shaderPrograms, noiseTexture, fbos } = webgl
 
   gl.clearColor(0, 0, 0, 0)
   gl.clear(gl.COLOR_BUFFER_BIT)
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   
-  const shaderData = programs[effect]
-  if (!shaderData) return
-  
-  gl.useProgram(shaderData.program)
-  gl.uniform1f(shaderData.uniforms.time, time * 0.001)
-  gl.uniform2f(shaderData.uniforms.resolution, gl.canvas.width, gl.canvas.height)
-  
-  if (shaderData.uniforms.emitterX && emitterX !== null) {
-    gl.uniform1f(shaderData.uniforms.emitterX, emitterX)
+  const extra = {
+    emitterX, emitterY, emitterVelX, emitterVelY,
+    timeDelta: deltaTime,
+    frameRate: deltaTime > 0 ? 1 / deltaTime : 60,
+    frame: Math.floor(time / 16)
   }
-  if (shaderData.uniforms.emitterY && emitterY !== null) {
-    gl.uniform1f(shaderData.uniforms.emitterY, emitterY)
+
+  const shader = shaderPrograms[effect]
+  if (!shader) return
+
+  const width = gl.canvas.width
+  const height = gl.canvas.height
+
+  if (shader.type === 'single') {
+    gl.useProgram(shader.program)
+    if (shader.uniforms.iChannel0 !== null && shader.uniforms.iChannel0 !== undefined) {
+      bindChannel(gl, shader.uniforms, 'iChannel0', noiseTexture, 0)
+    }
+    if (shader.uniforms.iChannel1 !== null && shader.uniforms.iChannel1 !== undefined) {
+      bindChannel(gl, shader.uniforms, 'iChannel1', noiseTexture, 1)
+    }
+    if (shader.uniforms.iChannel2 !== null && shader.uniforms.iChannel2 !== undefined) {
+      bindChannel(gl, shader.uniforms, 'iChannel2', noiseTexture, 2)
+    }
+    if (shader.uniforms.iChannel3 !== null && shader.uniforms.iChannel3 !== undefined) {
+      bindChannel(gl, shader.uniforms, 'iChannel3', noiseTexture, 3)
+    }
+    drawQuad(gl, shader.uniforms, width, height, time, extra)
+  } else {
+    if (!fbos.buffera.ping) resizeFBOs(gl, fbos, width, height)
+    
+    let finalOutput = null
+    for (const bufferName of BUFFER_ORDER) {
+      if (shader.passes[bufferName]) {
+        finalOutput = renderBufferPass(gl, shader, bufferName, fbos, noiseTexture, width, height, time, extra)
+      }
+    }
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.viewport(0, 0, width, height)
+    
+    if (shader.passes.image) {
+      const imageChannels = shader.passes.image.channels || {}
+      
+      gl.useProgram(shader.passes.image.program)
+      
+      const defaultImageChannels = {}
+      const mergedImageChannels = { ...defaultImageChannels, ...imageChannels }
+      
+      for (const [channelName, source] of Object.entries(mergedImageChannels)) {
+        if (!channelName.startsWith('iChannel')) continue
+        const unit = parseInt(channelName.replace('iChannel', ''))
+        
+        let texture = null
+        if (source === 'noise') {
+          texture = noiseTexture
+        } else if (source === 'final' || !source) {
+          texture = finalOutput || noiseTexture
+        } else {
+          texture = getBufferTexture(fbos, source) || noiseTexture
+        }
+        
+        const loc = shader.passes.image.uniforms[channelName]
+        if (texture && loc !== null && loc !== undefined) {
+          bindChannel(gl, shader.passes.image.uniforms, channelName, texture, unit)
+        }
+      }
+      
+      for (let i = 0; i < 4; i++) {
+        const channelName = `iChannel${i}`
+        if (!mergedImageChannels[channelName] && shader.passes.image.uniforms[channelName] !== null && shader.passes.image.uniforms[channelName] !== undefined) {
+          bindChannel(gl, shader.passes.image.uniforms, channelName, i === 0 ? (finalOutput || noiseTexture) : noiseTexture, i)
+        }
+      }
+      
+      drawQuad(gl, shader.passes.image.uniforms, width, height, time, extra)
+    }
   }
-  if (shaderData.uniforms.emitterVelX && emitterVelX !== null) {
-    gl.uniform1f(shaderData.uniforms.emitterVelX, emitterVelX)
-  }
-  if (shaderData.uniforms.emitterVelY && emitterVelY !== null) {
-    gl.uniform1f(shaderData.uniforms.emitterVelY, emitterVelY)
-  }
-  
-  gl.drawArrays(gl.TRIANGLES, 0, 6)
 }
 
 export function renderTrail(webgl, joints, prevJoints) {
   const { trailCtx } = webgl
-  
   if (!trailCtx || !joints || !prevJoints) return
   
   trailCtx.lineWidth = 2
@@ -184,10 +453,7 @@ export function resizeCanvas(canvas, gl = null) {
   const dpr = window.devicePixelRatio || 1
   canvas.width = window.innerWidth * dpr
   canvas.height = window.innerHeight * dpr
-  if (gl) {
-    gl.viewport(0, 0, canvas.width, canvas.height)
-  }
-  return { dpr, width: window.innerWidth, height: window.innerHeight }
+  if (gl) gl.viewport(0, 0, canvas.width, canvas.height)
 }
 
 export function resizeTrailCanvas(trailCanvas) {
