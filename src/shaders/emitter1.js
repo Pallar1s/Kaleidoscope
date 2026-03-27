@@ -8,8 +8,16 @@ export const emitter1FragmentShader = `
   uniform float u_emitterVelX;
   uniform float u_emitterVelY;
   
+  vec3 hsv2rgb(vec3 c) {
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+  }
+  
   float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
   }
   
   float noise(vec2 p) {
@@ -17,91 +25,93 @@ export const emitter1FragmentShader = `
     vec2 f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
     
-    float a = hash(i);
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-    
-    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    return mix(
+      mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+      f.y
+    );
   }
   
-  float noiseFBM(vec2 p) {
-    float value = 0.0;
-    float amplitude = 0.5;
-    for (int i = 0; i < 5; i++) {
-      value += amplitude * noise(p);
-      p *= 2.1;
-      amplitude *= 0.5;
-    }
-    return value;
+  float fbm(vec2 p) {
+    float f = 0.0;
+    f += 0.5000 * noise(p); p *= 2.02;
+    f += 0.2500 * noise(p); p *= 2.03;
+    f += 0.1250 * noise(p); p *= 2.01;
+    f += 0.0625 * noise(p);
+    return f;
   }
   
-  vec2 curlNoise(vec2 p) {
-    float eps = 0.01;
-    
-    float n1 = noiseFBM(p + vec2(eps, 0.0));
-    float n2 = noiseFBM(p - vec2(eps, 0.0));
-    float n3 = noiseFBM(p + vec2(0.0, eps));
-    float n4 = noiseFBM(p - vec2(0.0, eps));
-    
-    float dx = (n1 - n2) / (2.0 * eps);
-    float dy = (n3 - n4) / (2.0 * eps);
-    
-    return vec2(dy, -dx);
+  vec2 curl(vec2 p) {
+    vec2 e = vec2(0.01, 0.0);
+    float n1 = fbm(p + e.xy);
+    float n2 = fbm(p - e.xy);
+    float n3 = fbm(p + e.yx);
+    float n4 = fbm(p - e.yx);
+    return vec2(n3 - n4, n2 - n1) / (2.0 * e.x);
   }
   
   void main() {
     vec2 uv = gl_FragCoord.xy / u_resolution;
     vec2 emitter = vec2(u_emitterX / u_resolution.x, 1.0 - u_emitterY / u_resolution.y);
-    vec2 velocity = vec2(u_emitterVelX / u_resolution.x, -u_emitterVelY / u_resolution.y);
     
-    float dist = distance(uv, emitter);
+    vec2 velocity = vec2(u_emitterVelX, -u_emitterVelY);
+    float speed = length(velocity);
+    vec2 velDir = speed > 0.1 ? normalize(velocity) : vec2(0.0, 1.0);
     
-    float velMag = length(velocity);
-    vec2 velDir = velMag > 0.001 ? normalize(velocity) : vec2(0.0);
+    vec2 toPixel = uv - emitter;
+    float dist = length(toPixel);
     
-    float behind = dot(uv - emitter, -velDir);
-    float side = dot(uv - emitter, vec2(-velDir.y, velDir.x));
+    vec2 perpDir = vec2(-velDir.y, velDir.x);
+    float behind = dot(toPixel, -velDir);
+    float side = dot(toPixel, perpDir);
     
-    vec2 turbP = uv * 8.0;
-    float t = u_time * 0.5;
+    float t = u_time * 0.4;
     
-    vec2 curl1 = curlNoise(turbP + velDir * behind * 3.0 + t * 0.3);
-    vec2 curl2 = curlNoise(turbP * 2.0 - velDir * behind * 2.0 - t * 0.2);
+    vec2 noiseCoord = uv * 5.0;
+    vec2 c1 = curl(noiseCoord + t * 0.3);
+    vec2 c2 = curl(noiseCoord * 2.0 - t * 0.2 + 10.0);
+    vec2 c3 = curl(noiseCoord * 0.5 + t * 0.15 + 20.0);
     
-    float wake = exp(-abs(behind) * 8.0) * exp(-abs(side) * 3.0);
-    wake *= smoothstep(0.0, 0.3, behind);
+    float wake = exp(-abs(side) * 6.0) * exp(-behind * 2.0) * smoothstep(0.0, 0.1, behind);
     
-    float swirl = sin(side * 20.0 - behind * 10.0 + t * 3.0);
-    swirl *= exp(-abs(side) * 4.0);
-    swirl *= exp(-behind * 2.0);
+    vec2 swirl = c1 * 0.6 + c2 * 0.3 + c3 * 0.2;
+    float swirlIntensity = length(swirl);
     
-    float vortices = noiseFBM(turbP + curl1 * 2.0 + velocity * behind * 5.0 + t * 0.4);
-    vortices *= wake * 0.5;
+    float spiral = 0.0;
+    float numArms = 3.0;
+    float angle = atan(side, behind);
+    float radius = sqrt(behind * behind + side * side);
     
-    float turbulence = curlNoise(turbP * 1.5 + t * 0.1).x * 0.3;
-    turbulence += curlNoise(turbP * 3.0 - t * 0.15).y * 0.2;
+    for (float i = 0.0; i < 3.0; i++) {
+      float armAngle = angle + i * 6.28318 / numArms;
+      float spiralPattern = sin(armAngle * 4.0 - radius * 15.0 + t * 3.0);
+      spiral += spiralPattern * exp(-radius * 4.0) * 0.5;
+    }
     
-    float intensity = vortices + swirl * wake * 0.5 + turbulence;
-    intensity += wake * 0.2;
-    intensity *= velMag * 15.0;
+    float vortexCore = exp(-dist * 30.0) * 0.5;
+    
+    float turbulence = fbm(uv * 8.0 + c1 * 2.0 + velocity * 0.1);
+    
+    float intensity = 0.0;
+    intensity += spiral * wake * 1.5;
+    intensity += swirlIntensity * wake * 0.8;
+    intensity += vortexCore;
+    intensity += turbulence * wake * 0.3;
+    
+    intensity *= (speed * 0.5 + 0.3);
     intensity = abs(intensity);
-    
     intensity = clamp(intensity, 0.0, 1.0);
     
-    float hue = 0.6 + intensity * 0.15 + sin(t * 0.5) * 0.05;
-    float sat = 0.8;
-    float val = intensity * 1.5;
+    float hue = fract(0.55 + turbulence * 0.15 + spiral * 0.1);
+    float sat = 0.9;
+    float val = intensity * 1.8;
+    val = clamp(val, 0.0, 1.0);
     
-    vec3 color = vec3(
-      0.3 + intensity * 0.7,
-      0.5 + intensity * 0.5,
-      1.0
-    );
+    vec3 color = hsv2rgb(vec3(hue, sat, val));
     
-    float alpha = intensity * wake * 1.5;
+    float alpha = intensity * 1.2;
     alpha = clamp(alpha, 0.0, 1.0);
     
-    gl_FragColor = vec4(color * val, alpha);
+    gl_FragColor = vec4(color, alpha);
   }
 `

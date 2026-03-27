@@ -1,0 +1,74 @@
+export const fire2FragmentShader = `
+  precision highp float;
+  
+  uniform float u_time;
+  uniform vec2 u_resolution;
+  uniform float u_emitterX;
+  uniform float u_emitterY;
+  
+  float rand(vec2 n) {
+    return fract(sin(cos(dot(n, vec2(12.9898, 12.1414)))) * 83758.5453);
+  }
+
+  float noise(vec2 n) {
+    const vec2 d = vec2(0.0, 1.0);
+    vec2 b = floor(n);
+    vec2 f = smoothstep(vec2(0.0), vec2(1.0), fract(n));
+    return mix(
+      mix(rand(b), rand(b + d.yx), f.x),
+      mix(rand(b + d.xy), rand(b + d.yy), f.x),
+      f.y
+    );
+  }
+
+  float fbm(vec2 n) {
+    float total = 0.0;
+    float amplitude = 1.0;
+    for (int i = 0; i < 5; i++) {
+      total += noise(n) * amplitude;
+      n += n * 1.7;
+      amplitude *= 0.47;
+    }
+    return total;
+  }
+
+  void main() {
+    const vec3 c1 = vec3(0.5, 0.0, 0.1);
+    const vec3 c2 = vec3(0.9, 0.1, 0.0);
+    const vec3 c3 = vec3(0.2, 0.1, 0.7);
+    const vec3 c4 = vec3(1.0, 0.9, 0.1);
+    const vec3 c5 = vec3(0.1);
+    const vec3 c6 = vec3(0.9);
+
+    vec2 speed = vec2(0.1, 0.9);
+    float shift = 1.327 + sin(u_time * 2.0) / 2.4;
+    float alpha = 1.0;
+    
+    float dist = 3.5 - sin(u_time * 0.4) / 1.89;
+    
+    vec2 uv = gl_FragCoord.xy / u_resolution;
+    vec2 p = gl_FragCoord.xy * dist / vec2(u_resolution.x, u_resolution.x);
+    p += sin(p.yx * 4.0 + vec2(.2, -.3) * u_time) * 0.04;
+    p += sin(p.yx * 8.0 + vec2(.6, +.1) * u_time) * 0.01;
+    
+    p.x -= u_time / 1.1;
+    float q = fbm(p - u_time * 0.3 + 1.0 * sin(u_time + 0.5) / 2.0);
+    float qb = fbm(p - u_time * 0.4 + 0.1 * cos(u_time) / 2.0);
+    float q2 = fbm(p - u_time * 0.44 - 5.0 * cos(u_time) / 2.0) - 6.0;
+    float q3 = fbm(p - u_time * 0.9 - 10.0 * cos(u_time) / 15.0) - 4.0;
+    float q4 = fbm(p - u_time * 1.4 - 20.0 * sin(u_time) / 14.0) + 2.0;
+    q = (q + qb - .4 * q2 - 2.0 * q3 + .6 * q4) / 3.8;
+    vec2 r = vec2(
+      fbm(p + q / 2.0 + u_time * speed.x - p.x - p.y),
+      fbm(p + q - u_time * speed.y)
+    );
+    vec3 c = mix(c1, c2, fbm(p + r)) + mix(c3, c4, r.x) - mix(c5, c6, r.y);
+    vec3 color = vec3(1.0 / (pow(c + 1.61, vec3(4.0))) * cos(shift * gl_FragCoord.y / u_resolution.y));
+    
+    color = vec3(1.0, .2, .05) / (pow((r.y + r.y) * max(.0, p.y) + 0.1, 4.0));
+    color += vec3(.7, .5, .2) * mix(vec3(.9, .4, .3), vec3(.7, .5, .2), uv.y);
+    color = color / (1.0 + max(vec3(0.0), color));
+    
+    gl_FragColor = vec4(color, alpha);
+  }
+`
