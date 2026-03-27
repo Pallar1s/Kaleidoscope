@@ -1,25 +1,67 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import SidePanel from './SidePanel'
 import AppState from './AppState'
-import { initWebGL, renderWebGL, resizeCanvas, renderJoints } from './renderer'
+import { initWebGL, renderWebGL, renderTrail, resizeCanvas, resizeTrailCanvas, renderJoints } from './renderer'
 
 export default function App() {
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
   const [effect, setEffect] = useState('plasma')
+  const [speedMultiplier, setSpeedMultiplier] = useState(1)
+  const [selectedPreset, setSelectedPreset] = useState(0)
 
   const canvasRef = useRef(null)
+  const trailCanvasRef = useRef(null)
   const jointsCanvasRef = useRef(null)
   const webglRef = useRef(null)
   const rafRef = useRef(null)
   const lastTimeRef = useRef(0)
+  const prevJointsRef = useRef(null)
   const appStateRef = useRef(new AppState())
+  const speedMultiplierRef = useRef(1)
+  const shaderEnabledRef = useRef(true)
+  const jointsEnabledRef = useRef(true)
+  const effectRef = useRef('plasma')
+  const isPausedRef = useRef(false)
+
+  useEffect(() => {
+    speedMultiplierRef.current = speedMultiplier
+  }, [speedMultiplier])
+
+  useEffect(() => {
+    shaderEnabledRef.current = shaderEnabled
+  }, [shaderEnabled])
+
+  useEffect(() => {
+    jointsEnabledRef.current = jointsEnabled
+  }, [jointsEnabled])
+
+  useEffect(() => {
+    effectRef.current = effect
+  }, [effect])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        isPausedRef.current = true
+      } else {
+        lastTimeRef.current = 0
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
 
   const init = useCallback(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    const trailCanvas = trailCanvasRef.current
+    if (!canvas || !trailCanvas) return
 
-    const webgl = initWebGL(canvas)
+    const webgl = initWebGL(canvas, trailCanvas)
     if (webgl) {
       webglRef.current = webgl
     }
@@ -31,37 +73,67 @@ export default function App() {
     if (canvas && webgl) {
       resizeCanvas(canvas, webgl.gl)
     }
+    const trailCanvas = trailCanvasRef.current
+    if (trailCanvas) {
+      resizeTrailCanvas(trailCanvas)
+    }
     const jointsCanvas = jointsCanvasRef.current
     if (jointsCanvas) {
       resizeCanvas(jointsCanvas)
     }
   }, [])
 
+  const clearTrail = useCallback(() => {
+    const trailCanvas = trailCanvasRef.current
+    if (trailCanvas) {
+      const ctx = trailCanvas.getContext('2d')
+      ctx.clearRect(0, 0, trailCanvas.width, trailCanvas.height)
+    }
+  }, [])
+
+  const handlePresetChange = useCallback((index) => {
+    appStateRef.current.loadPreset(index)
+    prevJointsRef.current = null
+    clearTrail()
+    setSelectedPreset(index)
+  }, [clearTrail])
+
   const render = useCallback((time) => {
     const webgl = webglRef.current
     const canvas = canvasRef.current
 
-    if (lastTimeRef.current > 0) {
+    if (lastTimeRef.current > 0 && !isPausedRef.current) {
       const deltaTime = time - lastTimeRef.current
-      appStateRef.current.updateJoints(deltaTime)
+      appStateRef.current.updateJoints(deltaTime, speedMultiplierRef.current)
     }
     lastTimeRef.current = time
+    isPausedRef.current = false
 
     const joints = appStateRef.current.calculateJoints(window.innerWidth, window.innerHeight)
 
-    if (jointsEnabled && jointsCanvasRef.current) {
-      const ctx = jointsCanvasRef.current.getContext('2d')
-      renderJoints(ctx, joints, window.devicePixelRatio || 1)
+    if (webgl && canvas && shaderEnabledRef.current) {
+      renderWebGL(webgl, time, effectRef.current)
     }
 
-    if (webgl && canvas) {
-      renderWebGL(webgl, time, effect)
+    if (webgl && jointsEnabledRef.current) {
+      renderTrail(webgl, joints, prevJointsRef.current)
     }
+
+    if (jointsEnabledRef.current && jointsCanvasRef.current) {
+      const ctx = jointsCanvasRef.current.getContext('2d')
+      renderJoints(ctx, joints)
+    } else if (jointsCanvasRef.current) {
+      const ctx = jointsCanvasRef.current.getContext('2d')
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+    }
+
+    prevJointsRef.current = joints
 
     rafRef.current = requestAnimationFrame(render)
-  }, [shaderEnabled, jointsEnabled, effect])
+  }, [])
 
   useEffect(() => {
+    appStateRef.current.loadPreset(0)
     init()
     resize()
 
@@ -77,13 +149,6 @@ export default function App() {
     }
   }, [init, resize, render])
 
-  useEffect(() => {
-    if (!jointsEnabled && jointsCanvasRef.current) {
-      const ctx = jointsCanvasRef.current.getContext('2d')
-      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-    }
-  }, [jointsEnabled])
-
   return (
     <>
       <div style={{
@@ -98,7 +163,18 @@ export default function App() {
         top: 0,
         left: 0,
         width: '100vw',
-        height: '100vh'
+        height: '100vh',
+        zIndex: 1
+      }} />
+      <canvas ref={trailCanvasRef} style={{
+        display: (shaderEnabled || jointsEnabled) ? 'block' : 'none',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100vh',
+        pointerEvents: 'none',
+        zIndex: 2
       }} />
       <canvas ref={jointsCanvasRef} style={{
         display: jointsEnabled ? 'block' : 'none',
@@ -107,7 +183,8 @@ export default function App() {
         left: 0,
         width: '100vw',
         height: '100vh',
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        zIndex: 3
       }} />
       <SidePanel
         shaderEnabled={shaderEnabled}
@@ -116,6 +193,11 @@ export default function App() {
         onToggleJoints={setJointsEnabled}
         effect={effect}
         onEffectChange={setEffect}
+        speedMultiplier={speedMultiplier}
+        onSpeedChange={setSpeedMultiplier}
+        presetNames={appStateRef.current.getPresetNames()}
+        selectedPreset={selectedPreset}
+        onPresetChange={handlePresetChange}
       />
     </>
   )

@@ -59,7 +59,7 @@ function createShaderProgram(gl, fragmentShaderSource) {
   }
 }
 
-export function initWebGL(canvas) {
+export function initWebGL(canvas, trailCanvas) {
   const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
   if (!gl) {
     console.error('WebGL not supported')
@@ -78,12 +78,14 @@ export function initWebGL(canvas) {
     return null
   }
 
-  return { gl, programs }
+  const trailCtx = trailCanvas.getContext('2d')
+
+  return { gl, programs, trailCtx }
 }
 
 export function renderWebGL(webgl, time, effect = 'plasma') {
   const { gl, programs } = webgl
-  
+
   gl.clearColor(0, 0, 0, 1)
   gl.clear(gl.COLOR_BUFFER_BIT)
   
@@ -97,6 +99,24 @@ export function renderWebGL(webgl, time, effect = 'plasma') {
   gl.drawArrays(gl.TRIANGLES, 0, 6)
 }
 
+export function renderTrail(webgl, joints, prevJoints) {
+  const { trailCtx } = webgl
+  
+  if (!trailCtx || !joints || !prevJoints) return
+  
+  trailCtx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
+  trailCtx.lineWidth = 2
+  
+  joints.forEach((joint, index) => {
+    if (prevJoints[index]) {
+      trailCtx.beginPath()
+      trailCtx.moveTo(prevJoints[index].endX, prevJoints[index].endY)
+      trailCtx.lineTo(joint.endX, joint.endY)
+      trailCtx.stroke()
+    }
+  })
+}
+
 export function resizeCanvas(canvas, gl = null) {
   const dpr = window.devicePixelRatio || 1
   canvas.width = window.innerWidth * dpr
@@ -107,7 +127,18 @@ export function resizeCanvas(canvas, gl = null) {
   return { dpr, width: window.innerWidth, height: window.innerHeight }
 }
 
-export function renderJoints(ctx, joints, dpr) {
+export function resizeTrailCanvas(trailCanvas) {
+  const dpr = window.devicePixelRatio || 1
+  trailCanvas.width = window.innerWidth * dpr
+  trailCanvas.height = window.innerHeight * dpr
+}
+
+export function clearTrail(trailCanvas) {
+  const ctx = trailCanvas.getContext('2d')
+  ctx.clearRect(0, 0, trailCanvas.width, trailCanvas.height)
+}
+
+export function renderJoints(ctx, joints) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
 
   joints.forEach((joint) => {
