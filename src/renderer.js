@@ -65,13 +65,21 @@ function createShaderProgram(gl, fragmentShaderSource) {
   gl.enableVertexAttribArray(positionLocation)
   gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
 
-  return {
-    program,
-    uniforms: {
-      time: gl.getUniformLocation(program, 'u_time'),
-      resolution: gl.getUniformLocation(program, 'u_resolution')
-    }
+  const uniforms = {
+    time: gl.getUniformLocation(program, 'u_time'),
+    resolution: gl.getUniformLocation(program, 'u_resolution')
   }
+
+  const emitterX = gl.getUniformLocation(program, 'u_emitterX')
+  const emitterY = gl.getUniformLocation(program, 'u_emitterY')
+  const emitterVelX = gl.getUniformLocation(program, 'u_emitterVelX')
+  const emitterVelY = gl.getUniformLocation(program, 'u_emitterVelY')
+  if (emitterX) uniforms.emitterX = emitterX
+  if (emitterY) uniforms.emitterY = emitterY
+  if (emitterVelX) uniforms.emitterVelX = emitterVelX
+  if (emitterVelY) uniforms.emitterVelY = emitterVelY
+
+  return { program, uniforms }
 }
 
 function discoverShaders() {
@@ -122,11 +130,13 @@ export function initWebGL(canvas, trailCanvas) {
   return { gl, programs, trailCtx }
 }
 
-export function renderWebGL(webgl, time, effect = 'plasma') {
+export function renderWebGL(webgl, time, effect = 'plasma', emitterX = null, emitterY = null, emitterVelX = null, emitterVelY = null) {
   const { gl, programs } = webgl
 
-  gl.clearColor(0, 0, 0, 1)
+  gl.clearColor(0, 0, 0, 0)
   gl.clear(gl.COLOR_BUFFER_BIT)
+  gl.enable(gl.BLEND)
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   
   const shaderData = programs[effect]
   if (!shaderData) return
@@ -134,6 +144,19 @@ export function renderWebGL(webgl, time, effect = 'plasma') {
   gl.useProgram(shaderData.program)
   gl.uniform1f(shaderData.uniforms.time, time * 0.001)
   gl.uniform2f(shaderData.uniforms.resolution, gl.canvas.width, gl.canvas.height)
+  
+  if (shaderData.uniforms.emitterX && emitterX !== null) {
+    gl.uniform1f(shaderData.uniforms.emitterX, emitterX)
+  }
+  if (shaderData.uniforms.emitterY && emitterY !== null) {
+    gl.uniform1f(shaderData.uniforms.emitterY, emitterY)
+  }
+  if (shaderData.uniforms.emitterVelX && emitterVelX !== null) {
+    gl.uniform1f(shaderData.uniforms.emitterVelX, emitterVelX)
+  }
+  if (shaderData.uniforms.emitterVelY && emitterVelY !== null) {
+    gl.uniform1f(shaderData.uniforms.emitterVelY, emitterVelY)
+  }
   
   gl.drawArrays(gl.TRIANGLES, 0, 6)
 }

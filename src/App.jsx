@@ -17,6 +17,7 @@ export default function App() {
   const rafRef = useRef(null)
   const lastTimeRef = useRef(0)
   const prevJointsRef = useRef(null)
+  const prevEmitterRef = useRef(null)
   const appStateRef = useRef(new AppState())
   const speedMultiplierRef = useRef(1)
   const shaderEnabledRef = useRef(true)
@@ -112,7 +113,24 @@ export default function App() {
     const joints = appStateRef.current.calculateJoints(window.innerWidth, window.innerHeight)
 
     if (webgl && canvas && shaderEnabledRef.current) {
-      renderWebGL(webgl, time, effectRef.current)
+      const lastJoint = joints.length > 0 ? joints[joints.length - 1] : null
+      let velX = 0, velY = 0
+      if (lastJoint && prevEmitterRef.current) {
+        velX = lastJoint.endX - prevEmitterRef.current.x
+        velY = lastJoint.endY - prevEmitterRef.current.y
+      }
+      renderWebGL(
+        webgl,
+        time,
+        effectRef.current,
+        lastJoint ? lastJoint.endX : null,
+        lastJoint ? lastJoint.endY : null,
+        velX,
+        velY
+      )
+      if (lastJoint) {
+        prevEmitterRef.current = { x: lastJoint.endX, y: lastJoint.endY }
+      }
     }
 
     if (webgl) {
