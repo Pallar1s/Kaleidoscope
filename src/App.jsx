@@ -9,6 +9,7 @@ export default function App() {
   const [effect, setEffect] = useState('plasma')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
   const [selectedPreset, setSelectedPreset] = useState(0)
+  const [resolutionScale, setResolutionScale] = useState(1)
 
   const canvasRef = useRef(null)
   const trailCanvasRef = useRef(null)
@@ -24,11 +25,17 @@ export default function App() {
   const shaderEnabledRef = useRef(true)
   const jointsEnabledRef = useRef(true)
   const effectRef = useRef('plasma')
+  const resolutionScaleRef = useRef(1)
   const isPausedRef = useRef(false)
+  const mouseRef = useRef({ x: 0, y: 0, pressed: false })
 
   useEffect(() => {
     speedMultiplierRef.current = speedMultiplier
   }, [speedMultiplier])
+
+  useEffect(() => {
+    resolutionScaleRef.current = resolutionScale
+  }, [resolutionScale])
 
   useEffect(() => {
     shaderEnabledRef.current = shaderEnabled
@@ -73,18 +80,22 @@ export default function App() {
     const canvas = canvasRef.current
     const webgl = webglRef.current
     if (canvas && webgl) {
-      resizeCanvas(canvas, webgl.gl)
+      resizeCanvas(canvas, webgl.gl, resolutionScaleRef.current)
       resizeFBOs(webgl.gl, webgl.fbos, canvas.width, canvas.height)
     }
     const trailCanvas = trailCanvasRef.current
     if (trailCanvas) {
-      resizeTrailCanvas(trailCanvas)
+      resizeTrailCanvas(trailCanvas, resolutionScaleRef.current)
     }
     const jointsCanvas = jointsCanvasRef.current
     if (jointsCanvas) {
-      resizeCanvas(jointsCanvas)
+      resizeCanvas(jointsCanvas, null, resolutionScaleRef.current)
     }
   }, [])
+
+  useEffect(() => {
+    resize()
+  }, [resolutionScale, resize])
 
   const clearTrail = useCallback(() => {
     const trailCanvas = trailCanvasRef.current
@@ -122,15 +133,24 @@ export default function App() {
         velX = lastJoint.endX - prevEmitterRef.current.x
         velY = lastJoint.endY - prevEmitterRef.current.y
       }
+      
+      // Use mouse position if pressed, otherwise use joint position
+      const mouse = mouseRef.current
+      const useMouse = mouse.pressed
+      const mouseX = useMouse ? mouse.x : (lastJoint ? lastJoint.endX : null)
+      const mouseY = useMouse ? mouse.y : (lastJoint ? lastJoint.endY : null)
+      const mouseZ = useMouse ? 2.0 : 0.0  // z > 1 means mouse is pressed (shader expects > 1)
+      
       renderWebGL(
         webgl,
         time,
         effectRef.current,
-        lastJoint ? lastJoint.endX : null,
-        lastJoint ? lastJoint.endY : null,
+        mouseX,
+        mouseY,
         velX,
         velY,
-        deltaTimeRef.current
+        deltaTimeRef.current,
+        mouseZ
       )
       if (lastJoint) {
         prevEmitterRef.current = { x: lastJoint.endX, y: lastJoint.endY }
@@ -187,7 +207,30 @@ export default function App() {
         width: '100vw',
         height: '100vh',
         zIndex: 1
-      }} />
+      }}
+      onMouseDown={(e) => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const rect = canvas.getBoundingClientRect()
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width)
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height)
+        mouseRef.current = { x, y: canvas.height - y, pressed: true }
+      }}
+      onMouseMove={(e) => {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const rect = canvas.getBoundingClientRect()
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width)
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height)
+        mouseRef.current = { ...mouseRef.current, x, y: canvas.height - y }
+      }}
+      onMouseUp={() => {
+        mouseRef.current.pressed = false
+      }}
+      onMouseLeave={() => {
+        mouseRef.current.pressed = false
+      }}
+      />
       <canvas ref={trailCanvasRef} style={{
         display: (shaderEnabled || jointsEnabled) ? 'block' : 'none',
         position: 'fixed',
@@ -221,6 +264,8 @@ export default function App() {
         selectedPreset={selectedPreset}
         onPresetChange={handlePresetChange}
         shaderNames={availableShaders.map(s => s.name)}
+        resolutionScale={resolutionScale}
+        onResolutionScaleChange={setResolutionScale}
       />
     </>
   )

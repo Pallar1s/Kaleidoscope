@@ -1,5 +1,6 @@
 const JOINTS_WIDTH = 5
 const JOINT_END_SIZE = 10
+const MULTIPASS_ITERATIONS = 2  // Number of render passes for multipass shaders (1 = default, 2+ = more iterations)
 
 const VERTEX_SHADER_SOURCE = `#version 300 es
 in vec2 a_position;
@@ -294,6 +295,7 @@ function setUniforms(gl, uniforms, width, height, time, extra) {
   if (u.u_emitterY && extra.emitterY !== undefined) gl.uniform1f(u.u_emitterY, extra.emitterY)
   if (u.u_emitterVelX && extra.emitterVelX !== undefined) gl.uniform1f(u.u_emitterVelX, extra.emitterVelX)
   if (u.u_emitterVelY && extra.emitterVelY !== undefined) gl.uniform1f(u.u_emitterVelY, extra.emitterVelY)
+  if (u.u_mouse) gl.uniform4f(u.u_mouse, extra.emitterX || 0, extra.emitterY || 0, extra.mouseZ || 0, extra.mouseZ || 0)
 }
 
 function bindChannel(gl, uniforms, name, texture, unit) {
@@ -328,7 +330,7 @@ function getBufferTexture(fbos, bufferName) {
   const fbo = fbos[bufferName]
   if (!fbo || !fbo.ping) return null
   // Return OUTPUT texture (current frame just written)
-  return fbo.current === 0 ? fbo.pong.texture : fbo.ping.texture
+  return fbo.current === 0 ? fbo.ping.texture : fbo.pong.texture
 }
 
 function getLatestOutput(fbos, bufferName) {
@@ -408,7 +410,7 @@ function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, heigh
   return outputFBO.texture
 }
 
-export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016) {
+export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016, mouseZ = 0) {
   const { gl, shaderPrograms, noiseTexture, fbos } = webgl
 
   gl.clearColor(0, 0, 0, 0)
@@ -428,7 +430,8 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     emitterX, emitterY, emitterVelX, emitterVelY,
     timeDelta: deltaTime,
     frameRate: deltaTime > 0 ? 1 / deltaTime : 60,
-    frame: shaderPrograms._frameCounters[effect]
+    frame: shaderPrograms._frameCounters[effect],
+    mouseZ
   }
 
   const shader = shaderPrograms[effect]
@@ -458,9 +461,12 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     
     let finalOutput = null
 
-    for (const bufferName of BUFFER_ORDER) {
-      if (shader.passes[bufferName]) {
-        finalOutput = renderBufferPass(gl, shader, bufferName, fbos, noiseTexture, width, height, time, extra)
+    // Render all buffers multiple times for better simulation
+    for (let iteration = 0; iteration < MULTIPASS_ITERATIONS; iteration++) {
+      for (const bufferName of BUFFER_ORDER) {
+        if (shader.passes[bufferName]) {
+          finalOutput = renderBufferPass(gl, shader, bufferName, fbos, noiseTexture, width, height, time, extra)
+        }
       }
     }
 
@@ -541,17 +547,17 @@ export function renderTrail(webgl, joints, prevJoints) {
   })
 }
 
-export function resizeCanvas(canvas, gl = null) {
+export function resizeCanvas(canvas, gl = null, scale = 1) {
   const dpr = window.devicePixelRatio || 1
-  canvas.width = window.innerWidth * dpr
-  canvas.height = window.innerHeight * dpr
+  canvas.width = window.innerWidth * dpr * scale
+  canvas.height = window.innerHeight * dpr * scale
   if (gl) gl.viewport(0, 0, canvas.width, canvas.height)
 }
 
-export function resizeTrailCanvas(trailCanvas) {
+export function resizeTrailCanvas(trailCanvas, scale = 1) {
   const dpr = window.devicePixelRatio || 1
-  trailCanvas.width = window.innerWidth * dpr
-  trailCanvas.height = window.innerHeight * dpr
+  trailCanvas.width = window.innerWidth * dpr * scale
+  trailCanvas.height = window.innerHeight * dpr * scale
 }
 
 export function clearTrail(trailCanvas) {

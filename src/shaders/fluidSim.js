@@ -2,6 +2,7 @@ export const common = `
 #define dt 0.15
 #define USE_VORTICITY_CONFINEMENT
 #define VORTICITY_AMOUNT 0.11
+//#define MOUSE_ONLY
 
 float mag2(vec2 p){return dot(p,p);}
 vec2 point1(float t) {
@@ -34,8 +35,15 @@ vec4 solveFluid(sampler2D smp, vec2 uv, vec2 w, float time, vec3 mouse, vec3 las
     data.xyw = textureLod(smp, uv - dt*data.xy*w, 0.).xyw;
     
     vec2 newForce = vec2(0);
+    #ifndef MOUSE_ONLY
+    #if 1
     newForce.xy += 0.75*vec2(.0003, 0.00015)/(mag2(uv-point1(time))+0.0001);
     newForce.xy -= 0.75*vec2(.0003, 0.00015)/(mag2(uv-point2(time))+0.0001);
+    #else
+    newForce.xy += 0.9*vec2(.0003, 0.00015)/(mag2(uv-point1(time))+0.0002);
+    newForce.xy -= 0.9*vec2(.0003, 0.00015)/(mag2(uv-point2(time))+0.0002);
+    #endif
+    #endif
     
     if (mouse.z > 1. && lastMouse.z > 1.)
     {
@@ -46,10 +54,12 @@ vec4 solveFluid(sampler2D smp, vec2 uv, vec2 w, float time, vec3 mouse, vec3 las
     data.xy += dt*(viscForce.xy - K/dt*densDif + newForce);
     data.xy = max(vec2(0), abs(data.xy)-1e-4)*sign(data.xy);
     
+    #ifdef USE_VORTICITY_CONFINEMENT
     data.w = (tr.y - tl.y - tu.x + td.x);
     vec2 vort = vec2(abs(tu.w) - abs(td.w), abs(tl.w) - abs(tr.w));
     vort *= VORTICITY_AMOUNT/length(vort + 1e-9)*data.w;
     data.xy += vort;
+    #endif
     
     data.y *= smoothstep(.5,.48,abs(uv.y-0.5));
     

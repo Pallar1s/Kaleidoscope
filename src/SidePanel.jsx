@@ -1,6 +1,6 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames }) {
+export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange }) {
   return (
     <div className={styles.panel}>
       <h2 className={styles.title}>Settings</h2>
@@ -13,6 +13,18 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
         >
           {presetNames.map((name, index) => (
             <option key={index} value={index}>{name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.setting}>
+        <select
+          className={styles.select}
+          value={effect}
+          onChange={(e) => onEffectChange(e.target.value)}
+        >
+          {shaderNames.map((name) => (
+            <option key={name} value={name}>{name}</option>
           ))}
         </select>
       </div>
@@ -50,20 +62,19 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
           step="0.1"
           value={speedMultiplier}
           onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
-          className={styles.slider}
         />
       </div>
 
       <div className={styles.setting}>
-        <select
-          className={styles.select}
-          value={effect}
-          onChange={(e) => onEffectChange(e.target.value)}
-        >
-          {shaderNames.map((name) => (
-            <option key={name} value={name}>{name}</option>
-          ))}
-        </select>
+        <span className={styles.label}>Resolution: {resolutionScale.toFixed(2)}x</span>
+        <input
+          type="range"
+          min="1"
+          max="8"
+          step="0.25"
+          value={resolutionScale}
+          onChange={(e) => onResolutionScaleChange(parseFloat(e.target.value))}
+        />
       </div>
     </div>
   )
