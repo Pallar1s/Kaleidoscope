@@ -82,9 +82,10 @@ void main() {
     vec4 lastMouse = texture(iChannel0, vec2(0.5, 0.5) / iResolution.xy);
     vec4 data = solveFluid(iChannel0, uv, w, iTime, iMouse.xyz, lastMouse.xyz);
     
+    // Увеличим начальные данные
     if (iFrame < 20)
     {
-        data = vec4(0.5,0,0,0);
+        data = vec4(5.0, 5.0, 2.0, 1.0);
     }
     
     if (gl_FragCoord.y < 1.)
@@ -104,9 +105,10 @@ void main() {
     vec4 lastMouse = texture(iChannel0, vec2(0.5, 0.5) / iResolution.xy);
     vec4 data = solveFluid(iChannel0, uv, w, iTime, iMouse.xyz, lastMouse.xyz);
     
+    // Увеличим начальные данные
     if (iFrame < 20)
     {
-        data = vec4(0.5,0,0,0);
+        data = vec4(5.0, 5.0, 2.0, 1.0);
     }
     
     if (gl_FragCoord.y < 1.)
@@ -126,9 +128,10 @@ void main() {
     vec4 lastMouse = texture(iChannel0, vec2(0.5, 0.5) / iResolution.xy);
     vec4 data = solveFluid(iChannel0, uv, w, iTime, iMouse.xyz, lastMouse.xyz);
     
+    // Увеличим начальные данные
     if (iFrame < 20)
     {
-        data = vec4(0.5,0,0,0);
+        data = vec4(5.0, 5.0, 2.0, 1.0);
     }
     
     if (gl_FragCoord.y < 1.)
@@ -172,30 +175,15 @@ void main() {
     
     vec2 velo = texture(iChannel0, uv).xy;
     vec4 col = texture(iChannel1, uv - dt*velo*w*3.);
-    if (gl_FragCoord.y < 1. && gl_FragCoord.x < 1.)
-        col = vec4(0);
-    vec4 lastMouse = texture(iChannel1, vec2(0.5, 0.5) / iResolution.xy);
-    
-    if (iMouse.z > 1. && lastMouse.z > 1.)
-    {
-        float str = smoothstep(-.5,1.,length(mo - lastMouse.xy/iResolution.xy));   
-        col += str*0.0009/(pow(length(uv - mo),1.7)+0.002)*pal2(-iTime*0.7);
-    }
-    
-    col += .0025/(0.0005+pow(length(uv - point1(iTime)),1.75))*dt*0.12*pal(iTime*0.05 - .0);
-    col += .0025/(0.0005+pow(length(uv - point2(iTime)),1.75))*dt*0.12*pal2(iTime*0.05 + 0.675);
     
     if (iFrame < 20)
     {
-        col = vec4(0.);
+        col = vec4(2.0, 1.0, 0.5, 1.0);
     }
     
     col = clamp(col, 0.,5.);
     col = max(col - (0.0001 + col*0.004)*.5, 0.);
     
-    if (gl_FragCoord.y < 1. && gl_FragCoord.x < 1.)
-        col = iMouse;
-
     gl_FragColor = col;
 }
 `
@@ -206,8 +194,7 @@ uniform sampler2D iChannel0;
 void main() {
     vec2 uv = gl_FragCoord.xy / iResolution.xy;
     vec4 col = texture(iChannel0, uv);
-    if (gl_FragCoord.y < 1. || gl_FragCoord.y >= (iResolution.y-1.))
-        col = vec4(0);
+    // Просто покажи col
     gl_FragColor = col;
 }
 `

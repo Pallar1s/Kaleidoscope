@@ -1,18 +1,11 @@
 const JOINTS_WIDTH = 5
 const JOINT_END_SIZE = 10
 
-const VERTEX_SHADER_SOURCE_WEBGL1 = `
-  attribute vec2 a_position;
-  void main() {
-    gl_Position = vec4(a_position, 0.0, 1.0);
-  }
-`
-
-const VERTEX_SHADER_SOURCE_WEBGL2 = `#version 300 es
-  in vec2 a_position;
-  void main() {
-    gl_Position = vec4(a_position, 0.0, 1.0);
-  }
+const VERTEX_SHADER_SOURCE = `#version 300 es
+in vec2 a_position;
+void main() {
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}
 `
 
 const shaderModules = import.meta.glob('./shaders/*.js', { eager: true })
@@ -53,28 +46,34 @@ function createProgram(gl, vertexShader, fragmentShader) {
   return program
 }
 
-function createShaderProgram(gl, fragmentShaderSource, isWebGL2 = false, needsTransform = false, name = 'unknown') {
-  const vertexSource = isWebGL2 ? VERTEX_SHADER_SOURCE_WEBGL2 : VERTEX_SHADER_SOURCE_WEBGL1
-  const vertexShader = createShader(gl, gl.VERTEX_SHADER, vertexSource, name + '_vertex')
+function createShaderProgram(gl, fragmentShaderSource, needsTransform = false, name = 'unknown') {
+  const vertexShader = createShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER_SOURCE, name + '_vertex')
   
-  let fragSource = fragmentShaderSource
-  if (isWebGL2 && needsTransform) {
-    // Добавляем #version 300 es если его нет
-    if (!fragmentShaderSource.includes('#version')) {
-      fragSource = `#version 300 es
-precision highp float;
-
-` + fragmentShaderSource
-    }
-    // Заменяем gl_FragColor на fragColor если используется
+  let fragSource = fragmentShaderSource.trim()
+  if (needsTransform) {
     fragSource = fragSource.replace(/gl_FragColor/g, 'fragColor')
-    // Добавляем out vec4 fragColor; если его нет
-    if (!fragmentShaderSource.includes('out vec4 fragColor')) {
-      fragSource = fragSource.replace('precision highp float;', 'precision highp float;\nout vec4 fragColor;')
+    fragSource = fragSource.replace(/texture2D\(/g, 'texture(')
+    
+    if (!fragSource.includes('out vec4 fragColor')) {
+      if (fragSource.startsWith('#version')) {
+        if (!fragSource.includes('precision highp float')) {
+          fragSource = fragSource.replace('#version', '#version\nprecision highp float;')
+        } else if (!fragSource.match(/precision\s+highp\s+float\s*;/)) {
+          fragSource = fragSource.replace('precision highp float', 'precision highp float;')
+        }
+        if (!fragSource.includes('out vec4 fragColor')) {
+          fragSource = fragSource.replace('precision highp float;', 'precision highp float;\nout vec4 fragColor;')
+        }
+      } else {
+        let cleanSource = fragSource.replace(/^\s*precision\s+highp\s+float\s*;\s*/m, '')
+        fragSource = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+
+` + cleanSource
+      }
     }
   }
-  
-
   
   const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragSource, name + '_fragment')
   if (!vertexShader || !fragmentShader) return null
@@ -124,9 +123,9 @@ function getUniforms(gl, program) {
 function createFBO(gl, width, height) {
   const texture = gl.createTexture()
   gl.bindTexture(gl.TEXTURE_2D, texture)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, null)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
@@ -188,20 +187,20 @@ function discoverShaders() {
     if (keys.length > 1) {
       const common = module.common || ''
       const channels = module.channels || {}
-      console.log(`${fileName}: module.channels keys =`, Object.keys(channels))
+
       const passes = {}
       
       for (const key of keys) {
         const passName = key.replace('FragmentShader', '').toLowerCase()
-        console.log(`${fileName}: key=${key}, passName=${passName}`)
+
         
         let channelConfig = channels[passName] || {}
-        console.log(`${fileName}: channels['${passName}'] =`, channelConfig)
+
         if (Object.keys(channelConfig).length === 0) {
           for (const chKey of Object.keys(channels)) {
             if (chKey.toLowerCase() === passName) {
               channelConfig = channels[chKey]
-              console.log(`${fileName}: found via fallback chKey=${chKey}`)
+
               break
             }
           }
@@ -227,20 +226,15 @@ function discoverShaders() {
 }
 
 export const availableShaders = discoverShaders()
-console.log('availableShaders:', JSON.stringify(availableShaders.filter(s => s.name === 'fluidSim').map(s => ({
-  name: s.name,
-  passes: Object.keys(s.passes).map(k => ({ key: k, channels: s.passes[k].channels }))
-}))))
 
 export function initWebGL(canvas, trailCanvas) {
-  let gl = canvas.getContext('webgl2')
-  const isWebGL2 = !!gl
-  console.log('WebGL version:', isWebGL2 ? 'WebGL2' : 'WebGL1')
+  const gl = canvas.getContext('webgl2')
   if (!gl) return null
 
-  gl.getExtension('OES_texture_float')
-  gl.getExtension('OES_texture_float_linear')
-  gl.getExtension('EXT_shader_texture_lod')
+  const ext = gl.getExtension('EXT_color_buffer_float')
+  if (!ext) {
+    console.warn('EXT_color_buffer_float not supported, multipass shaders may not work correctly')
+  }
 
   const shaderPrograms = {}
   const noiseTexture = createNoiseTexture(gl)
@@ -256,7 +250,7 @@ export function initWebGL(canvas, trailCanvas) {
       shaderPrograms[shader.name] = { type: 'multi', passes: {} }
       
       for (const [passName, pass] of Object.entries(shader.passes)) {
-        const program = createShaderProgram(gl, pass.fragmentShader, isWebGL2, true, `${shader.name}_${passName}`)
+        const program = createShaderProgram(gl, pass.fragmentShader, true, `${shader.name}_${passName}`)
         if (program) {
           shaderPrograms[shader.name].passes[passName] = {
             program,
@@ -266,7 +260,7 @@ export function initWebGL(canvas, trailCanvas) {
         }
       }
     } else {
-      const program = createShaderProgram(gl, shader.fragmentShader, isWebGL2, isWebGL2, shader.name)
+      const program = createShaderProgram(gl, shader.fragmentShader, true, shader.name)
       if (program) {
         shaderPrograms[shader.name] = {
           type: 'single',
@@ -369,14 +363,17 @@ function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, heigh
 
   gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO.framebuffer)
   gl.viewport(0, 0, width, height)
+  gl.disable(gl.BLEND)
 
   gl.useProgram(pass.program)
 
   const defaultChannels = BUFFER_CHANNELS[passName] || {}
   const customChannels = pass.channels || {}
   const channels = Object.keys(customChannels).length > 0 ? { ...defaultChannels, ...customChannels } : defaultChannels
-  console.log(`${passName}: merged=${JSON.stringify(channels)}`)
-  console.log(`${passName}: default=${JSON.stringify(defaultChannels)}, custom=${JSON.stringify(customChannels)}, merged=${JSON.stringify(channels)}`)
+
+  if (shader.name === 'simpleTest' && passName === 'buffera' && extra.frame < 3) {
+    console.log('simpleTest buffera frame=' + extra.frame + ', channels:', JSON.stringify(channels), 'custom=' + JSON.stringify(customChannels))
+  }
   
   for (let i = 0; i < 4; i++) {
     const channelName = `iChannel${i}`
@@ -386,7 +383,7 @@ function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, heigh
     if (channelDef && loc !== null && loc !== undefined) {
       let texture = noiseTexture
       let source = 'noise'
-      if (channelDef === 'self') {
+      if (channelDef === 'self' || channelDef === passName) {
         texture = inputFBO.texture
         source = 'inputFBO'
       } else if (channelDef !== 'noise') {
@@ -396,9 +393,9 @@ function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, heigh
       if (texture) {
         bindChannel(gl, pass.uniforms, channelName, texture, i)
       }
-      console.log(`  ${passName}.${channelName} -> ${source}`)
+    
     } else if (loc !== null && loc !== undefined) {
-      console.log(`  ${passName}.${channelName} -> (no binding, channelDef=${channelDef})`)
+
     }
   }
 
@@ -449,16 +446,17 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     if (!fbos.buffera.ping) resizeFBOs(gl, fbos, width, height)
     
     let finalOutput = null
-    console.log(`${effect}:`, Object.entries(shader.passes).map(([k, v]) => `${k}:${JSON.stringify(v.channels)}`).join(', '))
+
     for (const bufferName of BUFFER_ORDER) {
       if (shader.passes[bufferName]) {
         finalOutput = renderBufferPass(gl, shader, bufferName, fbos, noiseTexture, width, height, time, extra)
       }
     }
-    console.log('finalOutput:', finalOutput ? 'texture set' : 'null')
+
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.viewport(0, 0, width, height)
+    gl.enable(gl.BLEND)
     
     if (shader.passes.image) {
       const imageChannels = shader.passes.image.channels || {}
@@ -492,7 +490,7 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
         if (texture && loc !== null && loc !== undefined) {
           bindChannel(gl, shader.passes.image.uniforms, channelName, texture, unit)
         }
-        console.log(`image.${channelName} -> ${textureSource} (texture: ${texture ? 'set' : 'null'})`)
+
       }
       
       for (let i = 0; i < 4; i++) {
