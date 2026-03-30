@@ -184,9 +184,12 @@ function discoverShaders() {
     
     const keys = Object.keys(module).filter(key => key.endsWith('FragmentShader'))
     
+    // console.log('Found shader:', fileName, 'keys:', keys.length, 'keys are:', keys)
+    
     if (keys.length > 1) {
       const common = module.common || ''
       const channels = module.channels || {}
+      // console.log('Multi shader:', fileName, 'channels:', channels)
 
       const passes = {}
       
@@ -247,7 +250,7 @@ export function initWebGL(canvas, trailCanvas) {
 
   for (const shader of availableShaders) {
     if (shader.type === 'multi') {
-      shaderPrograms[shader.name] = { type: 'multi', passes: {} }
+      shaderPrograms[shader.name] = { name: shader.name, type: 'multi', passes: {} }
       
       for (const [passName, pass] of Object.entries(shader.passes)) {
         const program = createShaderProgram(gl, pass.fragmentShader, true, `${shader.name}_${passName}`)
@@ -263,6 +266,7 @@ export function initWebGL(canvas, trailCanvas) {
       const program = createShaderProgram(gl, shader.fragmentShader, true, shader.name)
       if (program) {
         shaderPrograms[shader.name] = {
+          name: shader.name,
           type: 'single',
           program,
           uniforms: getUniforms(gl, program)
@@ -323,6 +327,7 @@ function getBufferTexture(fbos, bufferName) {
   if (!bufferName || bufferName === 'self') return null
   const fbo = fbos[bufferName]
   if (!fbo || !fbo.ping) return null
+  // Return OUTPUT texture (current frame just written)
   return fbo.current === 0 ? fbo.pong.texture : fbo.ping.texture
 }
 
@@ -371,9 +376,7 @@ function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, heigh
   const customChannels = pass.channels || {}
   const channels = Object.keys(customChannels).length > 0 ? { ...defaultChannels, ...customChannels } : defaultChannels
 
-  if (shader.name === 'simpleTest' && passName === 'buffera' && extra.frame < 3) {
-    console.log('simpleTest buffera frame=' + extra.frame + ', channels:', JSON.stringify(channels), 'custom=' + JSON.stringify(customChannels))
-  }
+  // Removed debug logs
   
   for (let i = 0; i < 4; i++) {
     const channelName = `iChannel${i}`
@@ -393,7 +396,6 @@ function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, heigh
       if (texture) {
         bindChannel(gl, pass.uniforms, channelName, texture, i)
       }
-    
     } else if (loc !== null && loc !== undefined) {
 
     }
@@ -401,7 +403,7 @@ function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, heigh
 
   drawQuad(gl, pass.uniforms, width, height, time, extra)
 
-  fbos[passName].current = 1 - fbos[passName].current
+  // Don't swap here - will swap after all buffers are rendered
 
   return outputFBO.texture
 }
@@ -414,11 +416,19 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
   
+  if (!shaderPrograms._frameCounters) {
+    shaderPrograms._frameCounters = {}
+  }
+  if (!shaderPrograms._frameCounters[effect]) {
+    shaderPrograms._frameCounters[effect] = 0
+  }
+  shaderPrograms._frameCounters[effect]++
+  
   const extra = {
     emitterX, emitterY, emitterVelX, emitterVelY,
     timeDelta: deltaTime,
     frameRate: deltaTime > 0 ? 1 / deltaTime : 60,
-    frame: Math.floor(time / 16)
+    frame: shaderPrograms._frameCounters[effect]
   }
 
   const shader = shaderPrograms[effect]
@@ -443,6 +453,7 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     }
     drawQuad(gl, shader.uniforms, width, height, time, extra)
   } else {
+    // Multi-pass rendering happens here
     if (!fbos.buffera.ping) resizeFBOs(gl, fbos, width, height)
     
     let finalOutput = null
@@ -450,6 +461,13 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     for (const bufferName of BUFFER_ORDER) {
       if (shader.passes[bufferName]) {
         finalOutput = renderBufferPass(gl, shader, bufferName, fbos, noiseTexture, width, height, time, extra)
+      }
+    }
+
+    // Swap all FBOs after all buffers are rendered
+    for (const bufferName of BUFFER_ORDER) {
+      if (fbos[bufferName]) {
+        fbos[bufferName].current = 1 - fbos[bufferName].current
       }
     }
 

@@ -91,13 +91,13 @@ vec2 pen(float t) {
 #define dt 0.15
 #define K 0.2
 #define nu 0.5
-#define kappa 0.1
+#define kappa 1.7
 
 void main() {
     vec2 p = gl_FragCoord.xy;
 
-    if(iFrame < 10) {
-        gl_FragColor = vec4(0,0,1,0);
+    if(iFrame < 30) {
+        gl_FragColor = vec4(0,0,5,0);
         return;
     }
     
