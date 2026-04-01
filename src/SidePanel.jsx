@@ -69,8 +69,8 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
         <span className={styles.label}>Resolution: {resolutionScale.toFixed(2)}x</span>
         <input
           type="range"
-          min="1"
-          max="8"
+          min="0.25"
+          max="4"
           step="0.25"
           value={resolutionScale}
           onChange={(e) => onResolutionScaleChange(parseFloat(e.target.value))}

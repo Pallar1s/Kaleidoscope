@@ -209,7 +209,7 @@ void main() {
     }
     
     col = clamp(col, 0.,5.);
-    col = max(col - (0.0001 + col*0.004)*.5, 0.);
+    col = max(col - (0.0001 + col*0.004)*0.5, 0.);
     
     if (gl_FragCoord.y < 1. && gl_FragCoord.x < 1.)
         col = u_mouse;

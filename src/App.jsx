@@ -3,13 +3,17 @@ import SidePanel from './SidePanel'
 import AppState from './AppState'
 import { initWebGL, renderWebGL, renderTrail, resizeCanvas, resizeTrailCanvas, resizeFBOs, renderJoints, availableShaders } from './renderer'
 
+const FPS_WINDOW = 30
+
 export default function App() {
+  const [fps, setFps] = useState(0)
+  const fpsHistoryRef = useRef([])
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
   const [effect, setEffect] = useState('plasma')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
   const [selectedPreset, setSelectedPreset] = useState(0)
-  const [resolutionScale, setResolutionScale] = useState(1)
+  const [resolutionScale, setResolutionScale] = useState(1.0)
 
   const canvasRef = useRef(null)
   const trailCanvasRef = useRef(null)
@@ -120,6 +124,15 @@ export default function App() {
       const deltaTime = time - lastTimeRef.current
       deltaTimeRef.current = deltaTime / 1000
       appStateRef.current.updateJoints(deltaTime, speedMultiplierRef.current)
+      
+      // FPS calculation
+      const currentFps = 1000 / deltaTime
+      fpsHistoryRef.current.push(currentFps)
+      if (fpsHistoryRef.current.length > FPS_WINDOW) {
+        fpsHistoryRef.current.shift()
+      }
+      const avgFps = fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length
+      setFps(Math.round(avgFps))
     }
     lastTimeRef.current = time
     isPausedRef.current = false
@@ -199,6 +212,20 @@ export default function App() {
         height: '100vh',
         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
       }} />
+      <div style={{
+        position: 'fixed',
+        top: 10,
+        left: 10,
+        color: 'white',
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        background: 'rgba(0,0,0,0.5)',
+        padding: '4px 8px',
+        borderRadius: '4px',
+        zIndex: 1000
+      }}>
+        {fps} FPS
+      </div>
       <canvas ref={canvasRef} style={{
         display: shaderEnabled ? 'block' : 'none',
         position: 'fixed',

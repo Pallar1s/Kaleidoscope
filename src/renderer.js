@@ -1,6 +1,6 @@
 const JOINTS_WIDTH = 5
 const JOINT_END_SIZE = 10
-const MULTIPASS_ITERATIONS = 2  // Number of render passes for multipass shaders (1 = default, 2+ = more iterations)
+const MULTIPASS_ITERATIONS = 1  // Number of render passes for multipass shaders (1 = default, 2+ = more iterations)
 
 const VERTEX_SHADER_SOURCE = `#version 300 es
 in vec2 a_position;
