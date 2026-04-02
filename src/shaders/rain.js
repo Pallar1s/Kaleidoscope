@@ -133,8 +133,28 @@ export const rainFragmentShader = `
     vec2 n = vec2(cx - c.x, cy - c.x);
 
     float focus = mix(maxBlur - c.y, minBlur, S(0.1, 0.2, c.x));
-    float lod = clamp(focus / 2.0, 0.0, 15.0);
     vec3 col = textureLod(iChannel0, UV + n, focus).rgb;
+    //vec3 col = texture(iChannel0, UV + n).rgb;
+    
+    // Stacked blur - multiple passes with increasing radius
+    vec3 blur = vec3(0.0);
+    float totalWeight = 0.0;
+    
+    for (int pass = 1; pass <= 5; pass++) {
+      float radius = float(pass) * (2.0 + zoom) * 0.002;
+      float weight = 4.0 / float(pass);
+      
+      blur += texture(iChannel0, UV + n + vec2(radius, 0.0)).rgb * weight;
+      blur += texture(iChannel0, UV + n - vec2(radius, 0.0)).rgb * weight;
+      blur += texture(iChannel0, UV + n + vec2(0.0, radius)).rgb * weight;
+      blur += texture(iChannel0, UV + n - vec2(0.0, radius)).rgb * weight;
+      blur += texture(iChannel0, UV + n).rgb * weight;
+      
+      totalWeight += weight * 4.0;
+    }
+    
+    blur /= totalWeight;
+    col = mix(col, blur, 0.6);
     
     t = (T + 3.0) * 0.5;
     float colFade = sin(t * 0.2) * 0.5 + 0.5 + story;
