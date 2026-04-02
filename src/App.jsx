@@ -259,7 +259,7 @@ export default function App() {
       }}
       />
       <canvas ref={trailCanvasRef} style={{
-        display: (shaderEnabled || jointsEnabled) ? 'block' : 'none',
+        display: 'block',
         position: 'fixed',
         top: 0,
         left: 0,
