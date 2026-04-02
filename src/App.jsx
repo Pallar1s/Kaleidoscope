@@ -10,10 +10,12 @@ export default function App() {
   const fpsHistoryRef = useRef([])
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
+  const [trailEnabled, setTrailEnabled] = useState(true)
   const [effect, setEffect] = useState('plasma')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
   const [selectedPreset, setSelectedPreset] = useState(0)
   const [resolutionScale, setResolutionScale] = useState(1.0)
+  const [trailWidth, setTrailWidth] = useState(2)
 
   const canvasRef = useRef(null)
   const trailCanvasRef = useRef(null)
@@ -28,8 +30,10 @@ export default function App() {
   const speedMultiplierRef = useRef(1)
   const shaderEnabledRef = useRef(true)
   const jointsEnabledRef = useRef(true)
+  const trailEnabledRef = useRef(true)
   const effectRef = useRef('plasma')
   const resolutionScaleRef = useRef(1)
+  const trailWidthRef = useRef(2)
   const isPausedRef = useRef(false)
   const mouseRef = useRef({ x: 0, y: 0, pressed: false })
 
@@ -42,12 +46,20 @@ export default function App() {
   }, [resolutionScale])
 
   useEffect(() => {
+    trailWidthRef.current = trailWidth
+  }, [trailWidth])
+
+  useEffect(() => {
     shaderEnabledRef.current = shaderEnabled
   }, [shaderEnabled])
 
   useEffect(() => {
     jointsEnabledRef.current = jointsEnabled
   }, [jointsEnabled])
+
+  useEffect(() => {
+    trailEnabledRef.current = trailEnabled
+  }, [trailEnabled])
 
   useEffect(() => {
     effectRef.current = effect
@@ -171,7 +183,7 @@ export default function App() {
     }
 
     if (webgl) {
-      renderTrail(webgl, joints, prevJointsRef.current)
+      renderTrail(webgl, joints, prevJointsRef.current, trailWidthRef.current)
     }
 
     if (jointsEnabledRef.current && jointsCanvasRef.current) {
@@ -259,7 +271,7 @@ export default function App() {
       }}
       />
       <canvas ref={trailCanvasRef} style={{
-        display: 'block',
+        display: trailEnabled ? 'block' : 'none',
         position: 'fixed',
         top: 0,
         left: 0,
@@ -283,6 +295,8 @@ export default function App() {
         onToggleShader={setShaderEnabled}
         jointsEnabled={jointsEnabled}
         onToggleJoints={setJointsEnabled}
+        trailEnabled={trailEnabled}
+        onToggleTrail={setTrailEnabled}
         effect={effect}
         onEffectChange={setEffect}
         speedMultiplier={speedMultiplier}
@@ -293,6 +307,8 @@ export default function App() {
         shaderNames={availableShaders.map(s => s.name)}
         resolutionScale={resolutionScale}
         onResolutionScaleChange={setResolutionScale}
+        trailWidth={trailWidth}
+        onTrailWidthChange={setTrailWidth}
       />
     </>
   )

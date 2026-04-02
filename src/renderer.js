@@ -221,7 +221,8 @@ function discoverShaders() {
       shaders.push({
         name: fileName,
         type: 'single',
-        fragmentShader: module[keys[0]]
+        fragmentShader: module[keys[0]],
+        channelSources: module.channelSources || {}
       })
     }
   }
@@ -270,7 +271,8 @@ export function initWebGL(canvas, trailCanvas) {
           name: shader.name,
           type: 'single',
           program,
-          uniforms: getUniforms(gl, program)
+          uniforms: getUniforms(gl, program),
+          channelSources: shader.channelSources || {}
         }
       }
     }
@@ -278,7 +280,20 @@ export function initWebGL(canvas, trailCanvas) {
 
   const trailCtx = trailCanvas.getContext('2d')
 
-  return { gl, shaderPrograms, noiseTexture, fbos, trailCtx }
+  let trailTexture = gl.createTexture()
+  function updateTrailTexture() {
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+    gl.bindTexture(gl.TEXTURE_2D, trailTexture)
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, trailCanvas)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+    gl.generateMipmap(gl.TEXTURE_2D)
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+  }
+
+  return { gl, shaderPrograms, noiseTexture, fbos, trailCtx, trailCanvas, trailTexture, updateTrailTexture }
 }
 
 function setUniforms(gl, uniforms, width, height, time, extra) {
@@ -441,18 +456,31 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
   const height = gl.canvas.height
 
   if (shader.type === 'single') {
+    const channelSources = shader.channelSources || {}
     gl.useProgram(shader.program)
     if (shader.uniforms.iChannel0 !== null && shader.uniforms.iChannel0 !== undefined) {
-      bindChannel(gl, shader.uniforms, 'iChannel0', noiseTexture, 0)
+      const source = channelSources.iChannel0 || 'noise'
+      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
+      if (source === 'trail') webgl.updateTrailTexture()
+      bindChannel(gl, shader.uniforms, 'iChannel0', texture, 0)
     }
     if (shader.uniforms.iChannel1 !== null && shader.uniforms.iChannel1 !== undefined) {
-      bindChannel(gl, shader.uniforms, 'iChannel1', noiseTexture, 1)
+      const source = channelSources.iChannel1 || 'noise'
+      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
+      if (source === 'trail') webgl.updateTrailTexture()
+      bindChannel(gl, shader.uniforms, 'iChannel1', texture, 1)
     }
     if (shader.uniforms.iChannel2 !== null && shader.uniforms.iChannel2 !== undefined) {
-      bindChannel(gl, shader.uniforms, 'iChannel2', noiseTexture, 2)
+      const source = channelSources.iChannel2 || 'noise'
+      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
+      if (source === 'trail') webgl.updateTrailTexture()
+      bindChannel(gl, shader.uniforms, 'iChannel2', texture, 2)
     }
     if (shader.uniforms.iChannel3 !== null && shader.uniforms.iChannel3 !== undefined) {
-      bindChannel(gl, shader.uniforms, 'iChannel3', noiseTexture, 3)
+      const source = channelSources.iChannel3 || 'noise'
+      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
+      if (source === 'trail') webgl.updateTrailTexture()
+      bindChannel(gl, shader.uniforms, 'iChannel3', texture, 3)
     }
     drawQuad(gl, shader.uniforms, width, height, time, extra)
   } else {
@@ -529,11 +557,11 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
   }
 }
 
-export function renderTrail(webgl, joints, prevJoints) {
+export function renderTrail(webgl, joints, prevJoints, trailWidth = 2) {
   const { trailCtx } = webgl
   if (!trailCtx || !joints || !prevJoints) return
   
-  trailCtx.lineWidth = 2
+  trailCtx.lineWidth = trailWidth
   
   joints.forEach((joint, index) => {
     if (joint.enabled && prevJoints[index]) {

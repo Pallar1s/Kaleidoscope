@@ -1,6 +1,6 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange }) {
+export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
   return (
     <div className={styles.panel}>
       <h2 className={styles.title}>Settings</h2>
@@ -54,6 +54,18 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
       </div>
 
       <div className={styles.setting}>
+        <label className={styles.toggle}>
+          <input
+            type="checkbox"
+            checked={trailEnabled}
+            onChange={(e) => onToggleTrail(e.target.checked)}
+          />
+          <span className={styles.toggleSlider}></span>
+        </label>
+        <span className={styles.label}>Trail</span>
+      </div>
+
+      <div className={styles.setting}>
         <span className={styles.label}>Speed: {speedMultiplier.toFixed(1)}</span>
         <input
           type="range"
@@ -62,6 +74,18 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
           step="0.1"
           value={speedMultiplier}
           onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+        />
+      </div>
+
+      <div className={styles.setting}>
+        <span className={styles.label}>Trail Width: {trailWidth}</span>
+        <input
+          type="range"
+          min="1"
+          max="50"
+          step="1"
+          value={trailWidth}
+          onChange={(e) => onTrailWidthChange(parseFloat(e.target.value))}
         />
       </div>
 
