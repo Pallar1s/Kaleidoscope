@@ -107,6 +107,7 @@ function getUniforms(gl, program) {
     u_resolution: gl.getUniformLocation(program, 'u_resolution'),
     u_emitterX: gl.getUniformLocation(program, 'u_emitterX'),
     u_emitterY: gl.getUniformLocation(program, 'u_emitterY'),
+    u_emitter: gl.getUniformLocation(program, 'u_emitter'),
     u_emitterVelX: gl.getUniformLocation(program, 'u_emitterVelX'),
     u_emitterVelY: gl.getUniformLocation(program, 'u_emitterVelY'),
     u_mouse: gl.getUniformLocation(program, 'u_mouse'),
@@ -308,6 +309,7 @@ function setUniforms(gl, uniforms, width, height, time, extra) {
   
   if (u.u_emitterX && extra.emitterX !== undefined) gl.uniform1f(u.u_emitterX, extra.emitterX)
   if (u.u_emitterY && extra.emitterY !== undefined) gl.uniform1f(u.u_emitterY, extra.emitterY)
+  if (u.u_emitter && extra.emitterX !== undefined && extra.emitterY !== undefined) gl.uniform2f(u.u_emitter, extra.emitterX, extra.emitterY)
   if (u.u_emitterVelX && extra.emitterVelX !== undefined) gl.uniform1f(u.u_emitterVelX, extra.emitterVelX)
   if (u.u_emitterVelY && extra.emitterVelY !== undefined) gl.uniform1f(u.u_emitterVelY, extra.emitterVelY)
   if (u.u_mouse) gl.uniform4f(u.u_mouse, extra.emitterX || 0, extra.emitterY || 0, extra.mouseZ || 0, extra.mouseZ || 0)

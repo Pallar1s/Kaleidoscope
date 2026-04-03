@@ -1,3 +1,4 @@
+//https://www.shadertoy.com/view/ltffzl
 export const channelSources = {
   iChannel0: 'trail'
 }
@@ -11,6 +12,7 @@ export const rainFragmentShader = `
   uniform sampler2D iChannel0;
   
   #define S(a, b, t) smoothstep(a, b, t)
+  #define USE_POST_PROCESSING
   
   vec3 N13(float p) {
      vec3 p3 = fract(vec3(p) * vec3(.1031,.11369,.13787));
@@ -156,6 +158,7 @@ export const rainFragmentShader = `
     blur /= totalWeight;
     col = mix(col, blur, 0.6);
     
+#ifdef USE_POST_PROCESSING
     t = (T + 3.0) * 0.5;
     float colFade = sin(t * 0.2) * 0.5 + 0.5 + story;
     col *= mix(vec3(1.0), vec3(0.8, 0.9, 1.3), colFade);
@@ -165,6 +168,7 @@ export const rainFragmentShader = `
     col *= 1.0 + lightning * fade * mix(1.0, 0.1, story * story);
     col *= 1.0 - dot(UV - 0.5, UV - 0.5);
     col *= fade;
+#endif
 
     gl_FragColor = vec4(col, 1.0);
   }
