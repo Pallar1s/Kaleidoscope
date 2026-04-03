@@ -142,7 +142,7 @@ export const bufferCFragmentShader = `
   uniform float u_time;
   uniform vec2 u_resolution;
   uniform int u_frame;
-  uniform sampler2D iChannel2;
+  uniform sampler2D iChannel0;
   
   float sdPentagram(in vec2 p, in float r ) {
       const float k1x = 0.809016994;
@@ -165,7 +165,7 @@ export const bufferCFragmentShader = `
   
   void main() {
     vec2 fragCoord = gl_FragCoord.xy;
-    vec4 prev = texture(iChannel2, fragCoord/u_resolution.xy);
+    vec4 prev = texture(iChannel0, fragCoord/u_resolution.xy);
     
     if (u_frame <= 1 || int(prev.w) != int(min(u_resolution.x, u_resolution.y))) {
       vec2 uv = (fragCoord - u_resolution.xy/2.0)/u_resolution.xy * 2.05;
@@ -197,6 +197,7 @@ export const imageFragmentShader = `
   uniform sampler2D iChannel0;
   uniform sampler2D iChannel1;
   uniform sampler2D iChannel2;
+  uniform sampler2D iChannel3;
   
   #define rot(a) mat2(cos(a), -sin(a), sin(a), cos(a))
   
@@ -215,7 +216,8 @@ export const imageFragmentShader = `
     float alias = min(u_resolution.x, u_resolution.y)/2.0;
     vec2 uv = (fragCoord * 2.0 - u_resolution.xy) / min(u_resolution.x, u_resolution.y);
     
-    vec4 result = vec4(1.0);
+    // Black background
+    vec4 result = vec4(0.2, 0.4, 0.5, 1.0);
     
     for (int i = 0; i <= ballscount; i++) {
       vec2 coord = texelFetch(iChannel0, ivec2(i, 0), 0).xy;
@@ -236,6 +238,6 @@ export const imageFragmentShader = `
 export const channels = {
   buffera: { iChannel0: 'self' },
   bufferb: { iChannel0: 'buffera', iChannel1: 'self' },
-  bufferc: { iChannel2: 'self' },
+  bufferc: { iChannel0: 'self' },
   image: { iChannel0: 'buffera', iChannel1: 'bufferb', iChannel2: 'bufferc' }
 };
