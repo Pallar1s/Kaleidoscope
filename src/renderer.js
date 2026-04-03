@@ -526,7 +526,13 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
         
         let texture = null
         let textureSource = 'none'
-        if (source === 'noise') {
+        if (source === 'trail') {
+          if (webgl && webgl.trailTexture) {
+            webgl.updateTrailTexture()
+            texture = webgl.trailTexture
+            textureSource = 'trail'
+          }
+        } else if (source === 'noise') {
           texture = noiseTexture
           textureSource = 'noise'
         } else if (source === 'final' || !source) {

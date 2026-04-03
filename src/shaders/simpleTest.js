@@ -142,24 +142,31 @@ void main() {
 
 export const imageFragmentShader = `
 uniform vec2 u_resolution;
-#define iResolution u_resolution
 uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+#define iResolution u_resolution
 #define PI 3.141592653589793
 
 void main() {
     vec2 p = gl_FragCoord.xy;
     vec4 c = texture(iChannel0, p.xy / iResolution.xy);
     
+    // Noise background
+    vec4 noise = texture(iChannel1, p.xy / iResolution.xy);
+    
     vec4 o;
     o.rgb = .6 + .6 * cos(6.3 * atan(c.y,c.x)/(2.*PI) + vec3(0,23,21));
     o.rgb *= c.w/5.;
     o.rgb += clamp(c.z - 1., 0., 1.)/10.;
+    
+    // Mix noise background with shader effect
+    o.rgb = mix(noise.rgb * 0.3, o.rgb, 0.7);
     o.a = 1.;
     gl_FragColor = o;
 }
 `
 
 export const channels = {
-  buffera: { iChannel0: 'buffera' },
-  image: { iChannel0: 'buffera' }
+  buffera: { iChannel0: 'self' },
+  image: { iChannel0: 'buffera', iChannel1: 'self' }
 }
