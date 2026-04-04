@@ -42,6 +42,42 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
           {isPaused ? "▶" : "⏸"}
         </button>
       </div>
+
+      <div className={styles.setting}>
+        <span className={styles.label}>Speed: {speedMultiplier.toFixed(1)}</span>
+        <input
+          type="range"
+          min="0"
+          max="10"
+          step="0.1"
+          value={speedMultiplier}
+          disabled={isPaused}
+          onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+        />
+      </div>
+
+      <div className={styles.setting}>
+        <span className={styles.label}>Shader effect</span>
+        <select
+          className={styles.select}
+          value={effect}
+          onChange={(e) => onEffectChange(e.target.value)}
+        >
+          {shaderNames.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.setting}>
+        <button
+          onClick={onTogglePause}
+          className={styles.playPauseButton}
+          title={isPaused ? "Play" : "Pause"}
+        >
+          {isPaused ? "▶" : "⏸"}
+        </button>
+      </div>
       
       <div className={styles.setting}>
         <label className={styles.toggle}>

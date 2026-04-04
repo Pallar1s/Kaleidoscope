@@ -100,6 +100,11 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
+.playPauseButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .select {
   width: 100%;
   padding: 8px 12px;
@@ -148,4 +153,9 @@
   background: #667eea;
   cursor: pointer;
   border: none;
+}
+
+.setting input[type="range"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
