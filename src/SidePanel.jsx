@@ -6,6 +6,7 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
       <h2 className={styles.title}>Settings</h2>
       
       <div className={styles.setting}>
+        <span className={styles.label}>Joint preset</span>
         <select
           className={styles.select}
           value={selectedPreset}
@@ -18,6 +19,7 @@ export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled
       </div>
 
       <div className={styles.setting}>
+        <span className={styles.label}>Shader effect</span>
         <select
           className={styles.select}
           value={effect}
