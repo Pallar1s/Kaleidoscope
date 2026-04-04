@@ -7,7 +7,7 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
     <div className={styles.panel}>
       <h2 className={styles.title}>Settings</h2>
       
-      <div className={styles.setting}>
+      <div className={`${styles.setting} ${styles.dropdown}`}>
         <span className={styles.label}>Joint preset</span>
         <select
           className={styles.select}
@@ -20,7 +20,7 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
         </select>
       </div>
 
-      <div className={styles.setting}>
+      <div className={`${styles.setting} ${styles.dropdown}`}>
         <span className={styles.label}>Shader effect</span>
         <select
           className={styles.select}

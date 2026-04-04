@@ -29,6 +29,11 @@
   gap: 12px;
 }
 
+.setting.dropdown {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .setting input[type="range"] {
   margin-left: auto;
 }
