@@ -7,6 +7,7 @@ const FPS_WINDOW = 30
 
 export default function App() {
   const [fps, setFps] = useState(0)
+  const [sidePanelVisible, setSidePanelVisible] = useState(true)
   const fpsHistoryRef = useRef([])
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
@@ -238,6 +239,29 @@ export default function App() {
       }}>
         {fps} FPS
       </div>
+      <button
+        onClick={() => setSidePanelVisible(!sidePanelVisible)}
+        style={{
+          position: 'fixed',
+          top: 10,
+          right: 10,
+          width: 40,
+          height: 40,
+          background: 'rgba(0,0,0,0.5)',
+          border: 'none',
+          borderRadius: '4px',
+          color: 'white',
+          fontSize: '20px',
+          cursor: 'pointer',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+        title="Settings"
+      >
+        ⚙
+      </button>
       <canvas ref={canvasRef} style={{
         display: shaderEnabled ? 'block' : 'none',
         position: 'fixed',
@@ -291,6 +315,7 @@ export default function App() {
         zIndex: 3
       }} />
       <SidePanel
+        visible={sidePanelVisible}
         shaderEnabled={shaderEnabled}
         onToggleShader={setShaderEnabled}
         jointsEnabled={jointsEnabled}

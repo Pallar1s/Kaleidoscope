@@ -1,6 +1,8 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
+export default function SidePanel({ visible, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
+  if (!visible) return null
+
   return (
     <div className={styles.panel}>
       <h2 className={styles.title}>Settings</h2>
