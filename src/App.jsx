@@ -7,17 +7,17 @@ const FPS_WINDOW = 30
 
 export default function App() {
   const [fps, setFps] = useState(0)
-  const [sidePanelVisible, setSidePanelVisible] = useState(true)
+  const [sidePanelVisible, setSidePanelVisible] = useState(false)
   const [isPaused, setIsPaused] = useState(true)
   const fpsHistoryRef = useRef([])
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
   const [trailEnabled, setTrailEnabled] = useState(true)
-  const [effect, setEffect] = useState('plasma')
+  const [effect, setEffect] = useState(availableShaders[0]?.name || 'art')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
   const [selectedPreset, setSelectedPreset] = useState(0)
   const [resolutionScale, setResolutionScale] = useState(1.0)
-  const [trailWidth, setTrailWidth] = useState(2)
+  const [trailWidth, setTrailWidth] = useState(10)
 
   const savedSpeedRef = useRef(speedMultiplier)
 
@@ -145,10 +145,12 @@ export default function App() {
     const webgl = webglRef.current
     const canvas = canvasRef.current
 
-    if (lastTimeRef.current > 0 && !isPausedRef.current) {
+    if (lastTimeRef.current > 0) {
       const deltaTime = time - lastTimeRef.current
       deltaTimeRef.current = deltaTime / 1000
-      appStateRef.current.updateJoints(deltaTime, speedMultiplierRef.current)
+      if (!isPausedRef.current) {
+        appStateRef.current.updateJoints(deltaTime, speedMultiplierRef.current)
+      }
       
       // FPS calculation
       const currentFps = 1000 / deltaTime
@@ -343,7 +345,8 @@ export default function App() {
           zIndex: 1001,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          animation: !sidePanelVisible ? 'pulseGreen 1.5s ease-in-out infinite' : 'none'
         }}
         title="Settings"
       >

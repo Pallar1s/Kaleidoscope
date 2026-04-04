@@ -36,7 +36,7 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
       <div className={styles.setting}>
         <button
           onClick={onTogglePause}
-          className={styles.playPauseButton}
+          className={`${styles.playPauseButton} ${isPaused ? styles.pulsing : ''}`}
           title={isPaused ? "Play" : "Pause"}
         >
           {isPaused ? "▶" : "⏸"}
