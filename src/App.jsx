@@ -239,81 +239,6 @@ export default function App() {
       }}>
         {fps} FPS
       </div>
-      <button
-        onClick={() => setSidePanelVisible(!sidePanelVisible)}
-        style={{
-          position: 'fixed',
-          top: 10,
-          right: 10,
-          width: 40,
-          height: 40,
-          background: 'rgba(0,0,0,0.5)',
-          border: 'none',
-          borderRadius: '4px',
-          color: 'white',
-          fontSize: '20px',
-          cursor: 'pointer',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}
-        title="Settings"
-      >
-        ⚙
-      </button>
-      <canvas ref={canvasRef} style={{
-        display: shaderEnabled ? 'block' : 'none',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        zIndex: 1
-      }}
-      onMouseDown={(e) => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const rect = canvas.getBoundingClientRect()
-        const x = (e.clientX - rect.left) * (canvas.width / rect.width)
-        const y = (e.clientY - rect.top) * (canvas.height / rect.height)
-        mouseRef.current = { x, y: canvas.height - y, pressed: true }
-      }}
-      onMouseMove={(e) => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const rect = canvas.getBoundingClientRect()
-        const x = (e.clientX - rect.left) * (canvas.width / rect.width)
-        const y = (e.clientY - rect.top) * (canvas.height / rect.height)
-        mouseRef.current = { ...mouseRef.current, x, y: canvas.height - y }
-      }}
-      onMouseUp={() => {
-        mouseRef.current.pressed = false
-      }}
-      onMouseLeave={() => {
-        mouseRef.current.pressed = false
-      }}
-      />
-      <canvas ref={trailCanvasRef} style={{
-        display: trailEnabled ? 'block' : 'none',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        pointerEvents: 'none',
-        zIndex: 2
-      }} />
-      <canvas ref={jointsCanvasRef} style={{
-        display: jointsEnabled ? 'block' : 'none',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        pointerEvents: 'none',
-        zIndex: 3
-      }} />
       <SidePanel
         visible={sidePanelVisible}
         shaderEnabled={shaderEnabled}
@@ -335,6 +260,29 @@ export default function App() {
         trailWidth={trailWidth}
         onTrailWidthChange={setTrailWidth}
       />
+      <button
+        onClick={() => setSidePanelVisible(!sidePanelVisible)}
+        style={{
+          position: 'fixed',
+          top: 10,
+          right: 10,
+          width: 40,
+          height: 40,
+          background: 'rgba(0,0,0,0.5)',
+          border: 'none',
+          borderRadius: '4px',
+          color: 'white',
+          fontSize: '20px',
+          cursor: 'pointer',
+          zIndex: 1001,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+        title="Settings"
+      >
+        ⚙
+      </button>
     </>
   )
 }
