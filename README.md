@@ -1,6 +1,6 @@
-# Kaleidoscope - WebGL Plasma Effect
+# Kaleidoscope - WebGL SPA application
 
-A beautiful multicolor plasma effect using WebGL pixel shaders, responsive to mouse cursor movement.
+A beautiful sandbox exploring shader effects and joints animation
 
 ## Prerequisites
 
@@ -36,7 +36,7 @@ npm run preview
 ## Features
 
 - Real-time WebGL shader rendering
-- Mouse-reactive plasma effect with ripples and color distortions
+- Mouse-reactive control
 - High DPI display support
 - Smooth 60fps animation
 - Multicolor gradient cycling with HSV color space
