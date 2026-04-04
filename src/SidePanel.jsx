@@ -1,6 +1,6 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ visible, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
+export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
   if (!visible) return null
 
   return (
@@ -31,6 +31,16 @@ export default function SidePanel({ visible, shaderEnabled, onToggleShader, join
             <option key={name} value={name}>{name}</option>
           ))}
         </select>
+      </div>
+
+      <div className={styles.setting}>
+        <button
+          onClick={onTogglePause}
+          className={styles.playPauseButton}
+          title={isPaused ? "Play" : "Pause"}
+        >
+          {isPaused ? "▶" : "⏸"}
+        </button>
       </div>
       
       <div className={styles.setting}>

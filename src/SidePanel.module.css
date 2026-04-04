@@ -83,6 +83,23 @@
   color: rgba(255, 255, 255, 0.9);
 }
 
+.playPauseButton {
+  width: 100%;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  margin-top: 10px;
+  transition: background 0.2s;
+}
+
+.playPauseButton:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .select {
   width: 100%;
   padding: 8px 12px;

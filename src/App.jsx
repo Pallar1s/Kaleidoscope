@@ -8,6 +8,7 @@ const FPS_WINDOW = 30
 export default function App() {
   const [fps, setFps] = useState(0)
   const [sidePanelVisible, setSidePanelVisible] = useState(true)
+  const [isPaused, setIsPaused] = useState(true)
   const fpsHistoryRef = useRef([])
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
@@ -17,6 +18,8 @@ export default function App() {
   const [selectedPreset, setSelectedPreset] = useState(0)
   const [resolutionScale, setResolutionScale] = useState(1.0)
   const [trailWidth, setTrailWidth] = useState(2)
+
+  const savedSpeedRef = useRef(speedMultiplier)
 
   const canvasRef = useRef(null)
   const trailCanvasRef = useRef(null)
@@ -65,6 +68,15 @@ export default function App() {
   useEffect(() => {
     effectRef.current = effect
   }, [effect])
+
+  useEffect(() => {
+    if (isPaused) {
+      savedSpeedRef.current = speedMultiplierRef.current
+      speedMultiplierRef.current = 0
+    } else {
+      speedMultiplierRef.current = savedSpeedRef.current || 1
+    }
+  }, [isPaused])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -293,6 +305,8 @@ export default function App() {
       }} />
       <SidePanel
         visible={sidePanelVisible}
+        isPaused={isPaused}
+        onTogglePause={() => setIsPaused(!isPaused)}
         shaderEnabled={shaderEnabled}
         onToggleShader={setShaderEnabled}
         jointsEnabled={jointsEnabled}
@@ -301,7 +315,7 @@ export default function App() {
         onToggleTrail={setTrailEnabled}
         effect={effect}
         onEffectChange={setEffect}
-        speedMultiplier={speedMultiplier}
+        speedMultiplier={isPaused ? 0 : speedMultiplier}
         onSpeedChange={setSpeedMultiplier}
         presetNames={appStateRef.current.getPresetNames()}
         selectedPreset={selectedPreset}
