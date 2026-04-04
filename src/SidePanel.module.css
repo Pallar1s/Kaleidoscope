@@ -32,6 +32,7 @@
 .setting.dropdown {
   flex-direction: column;
   align-items: flex-start;
+  margin-bottom: 4px;
 }
 
 .setting input[type="range"] {
@@ -119,7 +120,7 @@
   color: #fff;
   font-size: 14px;
   cursor: pointer;
-  margin-top: 5px;
+  margin-top: 2px;
 }
 
 .select:focus {
