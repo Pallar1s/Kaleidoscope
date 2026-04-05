@@ -374,8 +374,9 @@ Error generating stack: `+l.message+`
     col *= 1.2 - l;
     
     col = mix(col, vec4(palette(l - 0.23).rgb, 1.0), 1.0 - smoothstep(0.01, 0.95, l));
+    col = tanh(col + col);
     
-    col = col / (col + vec4(1.0));
+    //col = col / (col + vec4(1.0));
     
     gl_FragColor = clamp(col, 0.0, 1.0);
   }
