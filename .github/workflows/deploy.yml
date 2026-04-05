@@ -32,6 +32,9 @@ jobs:
         with:
           node-version: '20'
           
+      - name: Clean node modules
+        run: rm -rf node_modules package-lock.json
+        
       - name: Install dependencies
         run: npm install
         
