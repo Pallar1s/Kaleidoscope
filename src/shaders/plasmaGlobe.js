@@ -55,7 +55,7 @@ float sins(in float x)
         rz += abs(fract(x*1.4)-0.5)/z;
         x *= 1.3;
         z *= 1.15;
-        x -= 0.65*z;
+        x -= u_time*.65*z;
     }
     return rz;
 }
