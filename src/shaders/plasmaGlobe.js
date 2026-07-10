@@ -3,6 +3,7 @@ precision highp float;
 
 uniform float u_time;
 uniform vec2 u_resolution;
+uniform sampler2D iChannel0;
 
 #define NUM_RAYS 13.
 #define VOLUMETRIC_STEPS 19
