@@ -11,7 +11,7 @@ vec2 stanh(vec2 a) {
 void main() {
     vec2 u = gl_FragCoord.xy;
     vec2 v = u_resolution.xy;
-    u = .2*(u+u-v)/v.y;    
+    u = 0.2*(u+u-v)/v.y;    
      
     vec4 z = vec4(1,2,3,0);
     vec4 o = z;
@@ -23,7 +23,7 @@ void main() {
             / length((1.+i*dot(v,v)) 
                    * sin(1.5*u/(.5-dot(u,u)) - 9.*u.yx + t))
         )  
-        v = cos(t - 7.*u*pow(a += .03, i)) - 5.*u, 
+        v = cos(++t - 7.*u*pow(a += .03, i)) - 5.*u, 
         u += tanh(40. * dot(u *= mat2(cos(i + .02*t - z.wxzw*11.))
                            ,u)
                       * cos(1e2*u.yx + t)) / 2e2
