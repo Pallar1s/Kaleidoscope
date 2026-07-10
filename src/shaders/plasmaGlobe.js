@@ -11,6 +11,7 @@ uniform sampler2D iChannel0;
 #define FAR 6.
 
 mat2 mm2(in float a){float c = cos(a), s = sin(a);return mat2(c,-s,s,c);}
+float noise( in float x ){return texture(iChannel0, vec2(x*.01,1.)).x;}
 float hash( float n ){return fract(sin(n)*43758.5453);}
 
 float noise(in vec3 p)
