@@ -32,7 +32,7 @@ float no(vec3 p) {
 void main() {
     vec2 U = gl_FragCoord.xy;
     vec3 color = vec3(0.0);
-    float t = u_time * 0.001;
+    float t = u_time;
     
     for (int m = 0; m < AA; m++) {
         for (int n = 0; n < AA; n++) {
