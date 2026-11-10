@@ -11,7 +11,7 @@ test('all shaders compile and feedback stays frozen while paused', async ({ page
   await expect(canvas).toBeVisible()
   await page.getByRole('button', { name: 'Open settings' }).click()
 
-  const shaderSelect = page.getByLabel('Shader effect')
+  const shaderSelect = page.getByRole('combobox', { name: 'Shader effect' })
   const shaderNames = await shaderSelect.locator('option').allTextContents()
   await page.getByRole('button', { name: 'Play animation' }).click()
 

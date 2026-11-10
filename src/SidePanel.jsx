@@ -66,7 +66,7 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
         <label className={styles.toggle}>
           <input
             type="checkbox"
-              aria-label="Shader effect"
+              aria-label="Enable shader effect"
             checked={shaderEnabled}
             onChange={(e) => onToggleShader(e.target.checked)}
           />
