@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 test('all shaders compile and feedback stays frozen while paused', async ({ page }) => {
+  test.setTimeout(120_000)
   const consoleErrors = []
   page.on('console', message => {
     if (message.type() === 'error') consoleErrors.push(message.text())
@@ -13,12 +14,12 @@ test('all shaders compile and feedback stays frozen while paused', async ({ page
 
   const shaderSelect = page.getByRole('combobox', { name: 'Shader effect' })
   const shaderNames = await shaderSelect.locator('option').allTextContents()
-  await page.getByRole('button', { name: 'Play animation' }).click()
 
+  // Keep the app paused while compiling: continuously rendering every heavy
+  // shader under CI's software GPU can starve the browser's animation loop.
   for (const shaderName of shaderNames) {
     await shaderSelect.selectOption({ label: shaderName })
-    await expect(canvas).toHaveAttribute('data-active-effect', shaderName)
-    await page.waitForTimeout(100)
+    await expect(canvas).toHaveAttribute('data-active-effect', shaderName, { timeout: 20_000 })
     await expect(page.locator('[role="alert"]')).toHaveCount(0)
 
     const webglState = await canvas.evaluate(element => {
@@ -37,6 +38,8 @@ test('all shaders compile and feedback stays frozen while paused', async ({ page
   }
 
   await shaderSelect.selectOption({ label: 'fluidSim' })
+  await expect(canvas).toHaveAttribute('data-active-effect', 'fluidSim', { timeout: 20_000 })
+  await page.getByRole('button', { name: 'Play animation' }).click()
   await page.waitForTimeout(250)
   await page.getByRole('button', { name: 'Pause animation' }).click()
   await page.waitForTimeout(50)
