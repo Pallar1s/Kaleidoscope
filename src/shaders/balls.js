@@ -241,3 +241,9 @@ export const channels = {
   bufferc: { iChannel0: 'self' },
   image: { iChannel0: 'buffera', iChannel1: 'bufferb', iChannel2: 'bufferc' }
 };
+
+// Physics state occupies only the first row; the mask pass remains full-size.
+export const passSizes = {
+  buffera: { width: 256, height: 1 },
+  bufferb: { width: 256, height: 1 }
+}

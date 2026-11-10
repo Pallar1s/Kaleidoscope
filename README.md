@@ -4,13 +4,14 @@ A beautiful sandbox exploring shader effects and joints animation
 
 ## Prerequisites
 
-- Node.js 16+ (recommended: Node.js 18+)
-- npm or yarn
+- Node.js 22.12+
+- npm
+- A browser with WebGL 2 support (`EXT_color_buffer_float` is required for multipass effects)
 
 ## Installation
 
 ```bash
-npm install
+npm ci
 ```
 
 ## Development
@@ -33,10 +34,31 @@ npm run build
 npm run preview
 ```
 
+## Tests
+
+```bash
+npm test
+npx playwright install chromium
+npm run test:browser
+```
+
+The browser smoke test compiles every shader in WebGL, verifies the render-size budget and pause semantics, and exercises context-loss recovery.
+
 ## Features
 
 - Real-time WebGL shader rendering
-- Mouse-reactive control
-- High DPI display support
-- Smooth 60fps animation
-- Multicolor gradient cycling with HSV color space
+- Mouse- and joint-driven shader emitters
+- Data-driven joint presets
+- Single-pass and feedback/multipass shaders
+- High-DPI rendering within a bounded GPU-memory budget
+
+## Controls
+
+- Choose a joint preset and shader from the settings panel.
+- Drag on the canvas to use the pointer as the shader emitter.
+- Pause stops joint motion, shader time, trail accumulation, and feedback passes.
+- Resolution is capped by the GPU texture limit and a 1080p render budget; the panel shows the effective scale when capped.
+
+## Preset format
+
+Presets live in `presets/presets.json`. `Size` is a relative segment length, `Speed` is stored in hundredths of a degree per second, `Enabled` controls trail emission for that segment, and `JointColor` uses `#AARRGGBB`.

@@ -1,6 +1,7 @@
 const JOINTS_WIDTH = 5
 const JOINT_END_SIZE = 10
 const MULTIPASS_ITERATIONS = 1  // Number of render passes for multipass shaders (1 = default, 2+ = more iterations)
+const MAX_RENDER_PIXELS = 2_073_600
 
 const VERTEX_SHADER_SOURCE = `#version 300 es
 in vec2 a_position;
@@ -77,12 +78,20 @@ out vec4 fragColor;
   }
   
   const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fragSource, name + '_fragment')
-  if (!vertexShader || !fragmentShader) return null
+  if (!vertexShader || !fragmentShader) {
+    if (vertexShader) gl.deleteShader(vertexShader)
+    if (fragmentShader) gl.deleteShader(fragmentShader)
+    return null
+  }
   
   const program = createProgram(gl, vertexShader, fragmentShader)
+  gl.deleteShader(vertexShader)
+  gl.deleteShader(fragmentShader)
   if (!program) return null
 
   const positionBuffer = gl.createBuffer()
+  const vao = gl.createVertexArray()
+  gl.bindVertexArray(vao)
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer)
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
     -1, -1, 1, -1, -1, 1,
@@ -90,15 +99,19 @@ out vec4 fragColor;
   ]), gl.STATIC_DRAW)
 
   const positionLocation = gl.getAttribLocation(program, 'a_position')
-  gl.enableVertexAttribArray(positionLocation)
-  gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
+  if (positionLocation >= 0) {
+    gl.enableVertexAttribArray(positionLocation)
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0)
+  }
+  gl.bindVertexArray(null)
+  gl.bindBuffer(gl.ARRAY_BUFFER, null)
 
   const err = gl.getError()
   if (err !== gl.NO_ERROR) {
     console.error('WebGL error after creating program:', err)
   }
 
-  return program
+  return { handle: program, positionBuffer, vao }
 }
 
 function getUniforms(gl, program) {
@@ -125,7 +138,7 @@ function getUniforms(gl, program) {
 function createFBO(gl, width, height) {
   const texture = gl.createTexture()
   gl.bindTexture(gl.TEXTURE_2D, texture)
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, width, height, 0, gl.RGBA, gl.FLOAT, null)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
@@ -135,17 +148,35 @@ function createFBO(gl, width, height) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0)
 
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER)
+  if (status !== gl.FRAMEBUFFER_COMPLETE) {
+    console.error(`Framebuffer is incomplete (${status}) at ${width}x${height}`)
+    gl.deleteFramebuffer(framebuffer)
+    gl.deleteTexture(texture)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    return null
+  }
+
+  gl.viewport(0, 0, width, height)
+  gl.clearColor(0, 0, 0, 0)
+  gl.clear(gl.COLOR_BUFFER_BIT)
+
   gl.bindFramebuffer(gl.FRAMEBUFFER, null)
 
-  return { texture, framebuffer }
+  return { texture, framebuffer, width, height }
 }
 
 function createBufferPassFBOs(gl, width, height) {
-  return {
-    ping: createFBO(gl, width, height),
-    pong: createFBO(gl, width, height),
-    current: 0
+  const ping = createFBO(gl, width, height)
+  if (!ping) return null
+
+  const pong = createFBO(gl, width, height)
+  if (!pong) {
+    gl.deleteTexture(ping.texture)
+    gl.deleteFramebuffer(ping.framebuffer)
+    return null
   }
+  return { ping, pong, current: 0 }
 }
 
 const BUFFER_ORDER = ['buffera', 'bufferb', 'bufferc', 'bufferd']
@@ -186,13 +217,10 @@ function discoverShaders() {
     
     const keys = Object.keys(module).filter(key => key.endsWith('FragmentShader'))
     
-    // console.log('Found shader:', fileName, 'keys:', keys.length, 'keys are:', keys)
-    
     if (keys.length > 1) {
       const common = module.common || ''
       const channels = module.channels || {}
-      // console.log('Multi shader:', fileName, 'channels:', channels)
-
+      const passSizes = module.passSizes || {}
       const passes = {}
       
       for (const key of keys) {
@@ -213,7 +241,8 @@ function discoverShaders() {
         
         passes[passName] = {
           fragmentShader: common + module[key],
-          channels: channelConfig
+          channels: channelConfig,
+          size: passSizes[passName] || null
         }
       }
       
@@ -223,78 +252,132 @@ function discoverShaders() {
         name: fileName,
         type: 'single',
         fragmentShader: module[keys[0]],
-        channelSources: module.channelSources || {}
+        channelSources: module.channelSources || {},
+        trailMipmaps: module.trailMipmaps === true
       })
     }
   }
   
-  return shaders
+  return shaders.sort((left, right) => left.name.localeCompare(right.name))
 }
 
 export const availableShaders = discoverShaders()
+
+function destroyGpuProgram(gl, gpuProgram) {
+  if (!gpuProgram) return
+  gl.deleteVertexArray(gpuProgram.vao)
+  gl.deleteBuffer(gpuProgram.positionBuffer)
+  gl.deleteProgram(gpuProgram.handle)
+}
+
+function compileShaderDefinition(gl, shader) {
+  if (shader.type === 'single') {
+    const gpuProgram = createShaderProgram(gl, shader.fragmentShader, true, shader.name)
+    if (!gpuProgram) return null
+    return {
+      name: shader.name,
+      type: 'single',
+      gpuProgram,
+      uniforms: getUniforms(gl, gpuProgram.handle),
+      channelSources: shader.channelSources || {},
+      trailMipmaps: shader.trailMipmaps === true
+    }
+  }
+
+  const compiled = { name: shader.name, type: 'multi', passes: {} }
+  for (const [passName, pass] of Object.entries(shader.passes)) {
+    const gpuProgram = createShaderProgram(gl, pass.fragmentShader, true, `${shader.name}_${passName}`)
+    if (!gpuProgram) {
+      Object.values(compiled.passes).forEach(item => destroyGpuProgram(gl, item.gpuProgram))
+      return null
+    }
+    compiled.passes[passName] = {
+      gpuProgram,
+      uniforms: getUniforms(gl, gpuProgram.handle),
+      channels: pass.channels,
+      size: pass.size
+    }
+  }
+  return compiled
+}
 
 export function initWebGL(canvas, trailCanvas) {
   const gl = canvas.getContext('webgl2')
   if (!gl) return null
 
-  const ext = gl.getExtension('EXT_color_buffer_float')
-  if (!ext) {
-    console.warn('EXT_color_buffer_float not supported, multipass shaders may not work correctly')
-  }
+  const supportsFloatTargets = Boolean(gl.getExtension('EXT_color_buffer_float'))
+  if (!supportsFloatTargets) console.warn('EXT_color_buffer_float is unavailable; multipass effects are disabled')
 
-  const shaderPrograms = {}
+  const shaderPrograms = new Map()
+  const failedShaders = new Set()
+  const shaderDefinitions = new Map(availableShaders.map(shader => [shader.name, shader]))
   const noiseTexture = createNoiseTexture(gl)
-  const fbos = {
-    buffera: { ping: null, pong: null, current: 0 },
-    bufferb: { ping: null, pong: null, current: 0 },
-    bufferc: { ping: null, pong: null, current: 0 },
-    bufferd: { ping: null, pong: null, current: 0 }
-  }
-
-  for (const shader of availableShaders) {
-    if (shader.type === 'multi') {
-      shaderPrograms[shader.name] = { name: shader.name, type: 'multi', passes: {} }
-      
-      for (const [passName, pass] of Object.entries(shader.passes)) {
-        const program = createShaderProgram(gl, pass.fragmentShader, true, `${shader.name}_${passName}`)
-        if (program) {
-          shaderPrograms[shader.name].passes[passName] = {
-            program,
-            uniforms: getUniforms(gl, program),
-            channels: pass.channels
-          }
-        }
-      }
-    } else {
-      const program = createShaderProgram(gl, shader.fragmentShader, true, shader.name)
-      if (program) {
-        shaderPrograms[shader.name] = {
-          name: shader.name,
-          type: 'single',
-          program,
-          uniforms: getUniforms(gl, program),
-          channelSources: shader.channelSources || {}
-        }
-      }
-    }
-  }
 
   const trailCtx = trailCanvas.getContext('2d')
+  const trailTexture = gl.createTexture()
+  let trailTextureWidth = 0
+  let trailTextureHeight = 0
+  let lastTrailUploadFrame = -1
+  let lastUploadHadMipmaps = false
+  let trailDirty = true
 
-  let trailTexture = gl.createTexture()
-  function updateTrailTexture() {
+  gl.bindTexture(gl.TEXTURE_2D, trailTexture)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+  function updateTrailTexture(generateMipmaps = false, frame = 0) {
+    if (lastTrailUploadFrame === frame) {
+      if (generateMipmaps && !lastUploadHadMipmaps) {
+        gl.bindTexture(gl.TEXTURE_2D, trailTexture)
+        gl.generateMipmap(gl.TEXTURE_2D)
+        lastUploadHadMipmaps = true
+      }
+      return
+    }
+    if (!trailDirty && trailTextureWidth === trailCanvas.width && trailTextureHeight === trailCanvas.height) {
+      gl.bindTexture(gl.TEXTURE_2D, trailTexture)
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, generateMipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
+      if (generateMipmaps && !lastUploadHadMipmaps) gl.generateMipmap(gl.TEXTURE_2D)
+      lastUploadHadMipmaps = generateMipmaps
+      lastTrailUploadFrame = frame
+      return
+    }
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
     gl.bindTexture(gl.TEXTURE_2D, trailTexture)
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, trailCanvas)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-    gl.generateMipmap(gl.TEXTURE_2D)
+    if (trailTextureWidth !== trailCanvas.width || trailTextureHeight !== trailCanvas.height) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, trailCanvas)
+      trailTextureWidth = trailCanvas.width
+      trailTextureHeight = trailCanvas.height
+    } else {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, trailCanvas)
+    }
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, generateMipmaps ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR)
+    if (generateMipmaps) gl.generateMipmap(gl.TEXTURE_2D)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    lastTrailUploadFrame = frame
+    lastUploadHadMipmaps = generateMipmaps
+    trailDirty = false
   }
 
-  return { gl, shaderPrograms, noiseTexture, fbos, trailCtx, trailCanvas, trailTexture, updateTrailTexture }
+  return {
+    gl,
+    shaderPrograms,
+    failedShaders,
+    runtimeUnavailableEffects: new Set(),
+    shaderDefinitions,
+    effectResources: new Map(),
+    frameCounters: new Map(),
+    renderSequence: 0,
+    activeEffect: null,
+    supportsFloatTargets,
+    noiseTexture,
+    trailCtx,
+    trailCanvas,
+    trailTexture,
+    updateTrailTexture,
+    markTrailDirty: () => { trailDirty = true }
+  }
 }
 
 function setUniforms(gl, uniforms, width, height, time, extra) {
@@ -302,17 +385,21 @@ function setUniforms(gl, uniforms, width, height, time, extra) {
   
   if (u.u_time) gl.uniform1f(u.u_time, time * 0.001)
   if (u.u_resolution) gl.uniform2f(u.u_resolution, width, height)
-  if (u.u_timeDelta && extra.timeDelta) gl.uniform1f(u.u_timeDelta, extra.timeDelta)
-  if (u.u_frameRate && extra.frameRate) gl.uniform1f(u.u_frameRate, extra.frameRate)
+  if (u.u_timeDelta && extra.timeDelta !== undefined) gl.uniform1f(u.u_timeDelta, extra.timeDelta)
+  if (u.u_frameRate && extra.frameRate !== undefined) gl.uniform1f(u.u_frameRate, extra.frameRate)
   if (u.u_frame) gl.uniform1i(u.u_frame, extra.frame || 0)
   if (u.u_sampleRate) gl.uniform1f(u.u_sampleRate, 44100)
   
-  if (u.u_emitterX && extra.emitterX !== undefined) gl.uniform1f(u.u_emitterX, extra.emitterX)
-  if (u.u_emitterY && extra.emitterY !== undefined) gl.uniform1f(u.u_emitterY, extra.emitterY)
-  if (u.u_emitter && extra.emitterX !== undefined && extra.emitterY !== undefined) gl.uniform2f(u.u_emitter, extra.emitterX, extra.emitterY)
-  if (u.u_emitterVelX && extra.emitterVelX !== undefined) gl.uniform1f(u.u_emitterVelX, extra.emitterVelX)
-  if (u.u_emitterVelY && extra.emitterVelY !== undefined) gl.uniform1f(u.u_emitterVelY, extra.emitterVelY)
-  if (u.u_mouse) gl.uniform4f(u.u_mouse, extra.emitterX || 0, extra.emitterY || 0, extra.mouseZ || 0, extra.mouseZ || 0)
+  if (u.u_emitterX && Number.isFinite(extra.emitterX)) gl.uniform1f(u.u_emitterX, extra.emitterX)
+  if (u.u_emitterY && Number.isFinite(extra.emitterY)) gl.uniform1f(u.u_emitterY, extra.emitterY)
+  if (u.u_emitter && Number.isFinite(extra.emitterX) && Number.isFinite(extra.emitterY)) gl.uniform2f(u.u_emitter, extra.emitterX, extra.emitterY)
+  if (u.u_emitterVelX && Number.isFinite(extra.emitterVelX)) gl.uniform1f(u.u_emitterVelX, extra.emitterVelX)
+  if (u.u_emitterVelY && Number.isFinite(extra.emitterVelY)) gl.uniform1f(u.u_emitterVelY, extra.emitterVelY)
+  if (u.u_mouse) {
+    const mouseX = Number.isFinite(extra.emitterX) ? extra.emitterX : 0
+    const mouseY = Number.isFinite(extra.emitterY) ? height - extra.emitterY : 0
+    gl.uniform4f(u.u_mouse, mouseX, mouseY, extra.mouseZ || 0, extra.mouseZ || 0)
+  }
 }
 
 function bindChannel(gl, uniforms, name, texture, unit) {
@@ -324,276 +411,316 @@ function bindChannel(gl, uniforms, name, texture, unit) {
   gl.uniform1i(location, unit)
 }
 
-function drawQuad(gl, uniforms, width, height, time, extra) {
+function drawQuad(gl, gpuProgram, uniforms, width, height, time, extra) {
+  gl.bindVertexArray(gpuProgram.vao)
   setUniforms(gl, uniforms, width, height, time, extra)
   gl.drawArrays(gl.TRIANGLES, 0, 6)
+  gl.bindVertexArray(null)
 }
 
-export function resizeFBOs(gl, fbos, width, height) {
-  for (const bufferName of BUFFER_ORDER) {
-    const fbo = fbos[bufferName]
-    if (fbo.ping) {
-      gl.deleteTexture(fbo.ping.texture)
-      gl.deleteFramebuffer(fbo.ping.framebuffer)
-      gl.deleteTexture(fbo.pong.texture)
-      gl.deleteFramebuffer(fbo.pong.framebuffer)
-    }
-    fbos[bufferName] = createBufferPassFBOs(gl, width, height)
+function destroyFboPair(gl, pair) {
+  if (!pair) return
+  gl.deleteTexture(pair.ping.texture)
+  gl.deleteFramebuffer(pair.ping.framebuffer)
+  gl.deleteTexture(pair.pong.texture)
+  gl.deleteFramebuffer(pair.pong.framebuffer)
+}
+
+function destroyEffectResources(webgl, effect) {
+  const resources = webgl.effectResources.get(effect)
+  if (!resources) return
+  Object.values(resources.buffers).forEach(pair => destroyFboPair(webgl.gl, pair))
+  webgl.effectResources.delete(effect)
+}
+
+function getCompiledShader(webgl, effect) {
+  if (webgl.failedShaders.has(effect)) return null
+  if (webgl.shaderPrograms.has(effect)) return webgl.shaderPrograms.get(effect)
+
+  const definition = webgl.shaderDefinitions.get(effect)
+  if (!definition) return null
+  if (definition.type === 'multi' && !webgl.supportsFloatTargets) {
+    webgl.failedShaders.add(effect)
+    return null
+  }
+
+  const compiled = compileShaderDefinition(webgl.gl, definition)
+  if (!compiled) {
+    webgl.failedShaders.add(effect)
+    return null
+  }
+  webgl.shaderPrograms.set(effect, compiled)
+  return compiled
+}
+
+function getPassSize(pass, width, height) {
+  if (!pass.size) return { width, height }
+  return {
+    width: Math.max(1, Math.min(width, pass.size.width || width)),
+    height: Math.max(1, Math.min(height, pass.size.height || height))
   }
 }
 
-function getBufferTexture(fbos, bufferName) {
-  if (!bufferName || bufferName === 'self') return null
-  const fbo = fbos[bufferName]
-  if (!fbo || !fbo.ping) return null
-  // Return OUTPUT texture (current frame just written)
-  return fbo.current === 0 ? fbo.ping.texture : fbo.pong.texture
+function ensureEffectResources(webgl, shader, width, height) {
+  const existing = webgl.effectResources.get(shader.name)
+  if (existing?.width === width && existing?.height === height) return existing
+  destroyEffectResources(webgl, shader.name)
+
+  const resources = { width, height, buffers: {} }
+  for (const bufferName of BUFFER_ORDER) {
+    const pass = shader.passes[bufferName]
+    if (!pass) continue
+    const size = getPassSize(pass, width, height)
+    const pair = createBufferPassFBOs(webgl.gl, size.width, size.height)
+    if (!pair) {
+      Object.values(resources.buffers).forEach(item => destroyFboPair(webgl.gl, item))
+      return null
+    }
+    resources.buffers[bufferName] = pair
+  }
+  webgl.effectResources.set(shader.name, resources)
+  return resources
 }
 
-function getLatestOutput(fbos, bufferName) {
-  if (!bufferName) return null
-  const fbo = fbos[bufferName]
-  if (!fbo || !fbo.ping) return null
-  return fbo.ping.texture
+function getReadTarget(pair) {
+  return pair.current === 0 ? pair.ping : pair.pong
 }
 
-function getPreviousOutput(fbos, bufferName) {
-  if (!bufferName) return null
-  const fbo = fbos[bufferName]
-  if (!fbo || !fbo.ping) return null
-  return fbo.pong.texture
+function getWriteTarget(pair) {
+  return pair.current === 0 ? pair.pong : pair.ping
 }
 
-function getCurrentFBO(fbos, bufferName) {
-  if (!bufferName) return null
-  const fbo = fbos[bufferName]
-  return fbo ? fbo.current : 0
+function getReadTexture(resources, bufferName) {
+  const pair = resources.buffers[bufferName]
+  return pair ? getReadTarget(pair).texture : null
 }
 
-function getFBOOutput(fbos, bufferName) {
-  if (!bufferName) return null
-  const fbo = fbos[bufferName]
-  return fbo ? fbo.ping.texture : null
-}
-
-function renderBufferPass(gl, shader, passName, fbos, noiseTexture, width, height, time, extra) {
+function renderBufferPass(webgl, shader, passName, resources, written, width, height, time, extra) {
+  const { gl, noiseTexture } = webgl
   const pass = shader.passes[passName]
-  if (!pass) return null
+  const pair = resources.buffers[passName]
+  if (!pass || !pair) return
 
-  const fbo = fbos[passName]
-  const inputFBO = fbo.current === 0 ? fbo.ping : fbo.pong
-  const outputFBO = fbo.current === 0 ? fbo.pong : fbo.ping
-
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, outputFBO.framebuffer)
-  gl.viewport(0, 0, width, height)
+  const input = getReadTarget(pair)
+  const output = getWriteTarget(pair)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, output.framebuffer)
+  gl.viewport(0, 0, output.width, output.height)
   gl.disable(gl.BLEND)
+  gl.useProgram(pass.gpuProgram.handle)
 
-  gl.useProgram(pass.program)
-
-  const defaultChannels = BUFFER_CHANNELS[passName] || {}
-  const customChannels = pass.channels || {}
-  const channels = Object.keys(customChannels).length > 0 ? { ...defaultChannels, ...customChannels } : defaultChannels
-
-  // Removed debug logs
-  
+  const defaults = BUFFER_CHANNELS[passName] || {}
+  const channels = { ...defaults, ...(pass.channels || {}) }
   for (let i = 0; i < 4; i++) {
     const channelName = `iChannel${i}`
-    const channelDef = channels[channelName]
-    const loc = pass.uniforms[channelName]
-    
-    if (channelDef && loc !== null && loc !== undefined) {
-      let texture = noiseTexture
-      let source = 'noise'
-      if (channelDef === 'self' || channelDef === passName) {
-        texture = inputFBO.texture
-        source = 'inputFBO'
-      } else if (channelDef !== 'noise') {
-        texture = getBufferTexture(fbos, channelDef) || noiseTexture
-        source = channelDef
-      }
-      if (texture) {
-        bindChannel(gl, pass.uniforms, channelName, texture, i)
-      }
-    } else if (loc !== null && loc !== undefined) {
+    if (pass.uniforms[channelName] === null) continue
+    const source = channels[channelName] || 'noise'
 
+    let texture = noiseTexture
+    if (source === 'self' || source === passName) {
+      texture = input.texture
+    } else if (source !== 'noise') {
+      const sourcePair = resources.buffers[source]
+      if (sourcePair) {
+        texture = written.has(source)
+          ? getWriteTarget(sourcePair).texture
+          : getReadTarget(sourcePair).texture
+      }
+    }
+    bindChannel(gl, pass.uniforms, channelName, texture, i)
+  }
+
+  drawQuad(gl, pass.gpuProgram, pass.uniforms, width, height, time, extra)
+  written.add(passName)
+}
+
+export function resetWebGLEffect(webgl, effect = webgl.activeEffect) {
+  if (!webgl || !effect) return
+  destroyEffectResources(webgl, effect)
+  webgl.frameCounters.set(effect, 0)
+  if (webgl.activeEffect === effect) webgl.activeEffect = null
+}
+
+export function resizeWebGL(webgl) {
+  if (!webgl) return
+  for (const effect of [...webgl.effectResources.keys()]) destroyEffectResources(webgl, effect)
+  webgl.frameCounters.clear()
+  webgl.runtimeUnavailableEffects.clear()
+  webgl.activeEffect = null
+}
+
+export function disposeWebGL(webgl) {
+  if (!webgl) return
+  resizeWebGL(webgl)
+  for (const shader of webgl.shaderPrograms.values()) {
+    if (shader.type === 'single') destroyGpuProgram(webgl.gl, shader.gpuProgram)
+    else Object.values(shader.passes).forEach(pass => destroyGpuProgram(webgl.gl, pass.gpuProgram))
+  }
+  webgl.shaderPrograms.clear()
+  webgl.gl.deleteTexture(webgl.noiseTexture)
+  webgl.gl.deleteTexture(webgl.trailTexture)
+}
+
+export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016, interactionZ = 0, advanceSimulation = true) {
+  const { gl, noiseTexture } = webgl
+  if (webgl.runtimeUnavailableEffects.has(effect) || gl.isContextLost()) return false
+  if (webgl.activeEffect && webgl.activeEffect !== effect) {
+    resetWebGLEffect(webgl, webgl.activeEffect)
+  }
+  const shader = getCompiledShader(webgl, effect)
+  if (!shader) return false
+
+  if (webgl.activeEffect !== effect) {
+    resetWebGLEffect(webgl, effect)
+    webgl.activeEffect = effect
+  }
+
+  const width = gl.canvas.width
+  const height = gl.canvas.height
+  let resources = null
+  if (shader.type === 'multi') {
+    resources = ensureEffectResources(webgl, shader, width, height)
+    if (!resources) {
+      webgl.runtimeUnavailableEffects.add(effect)
+      return false
     }
   }
 
-  drawQuad(gl, pass.uniforms, width, height, time, extra)
-
-  // Don't swap here - will swap after all buffers are rendered
-
-  return outputFBO.texture
-}
-
-export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016, mouseZ = 0) {
-  const { gl, shaderPrograms, noiseTexture, fbos } = webgl
-
+  const previousFrame = webgl.frameCounters.get(effect) || 0
+  const frame = advanceSimulation ? previousFrame + 1 : previousFrame
+  if (advanceSimulation) webgl.frameCounters.set(effect, frame)
+  const uploadFrame = ++webgl.renderSequence
+  const extra = {
+    emitterX,
+    emitterY,
+    emitterVelX,
+    emitterVelY,
+    timeDelta: deltaTime,
+    frameRate: deltaTime > 0 ? 1 / deltaTime : 60,
+    frame,
+    mouseZ: interactionZ
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  gl.viewport(0, 0, width, height)
   gl.clearColor(0, 0, 0, 0)
   gl.clear(gl.COLOR_BUFFER_BIT)
   gl.enable(gl.BLEND)
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-  
-  if (!shaderPrograms._frameCounters) {
-    shaderPrograms._frameCounters = {}
-  }
-  if (!shaderPrograms._frameCounters[effect]) {
-    shaderPrograms._frameCounters[effect] = 0
-  }
-  shaderPrograms._frameCounters[effect]++
-  
-  const extra = {
-    emitterX, emitterY, emitterVelX, emitterVelY,
-    timeDelta: deltaTime,
-    frameRate: deltaTime > 0 ? 1 / deltaTime : 60,
-    frame: shaderPrograms._frameCounters[effect],
-    mouseZ
-  }
-
-  const shader = shaderPrograms[effect]
-  if (!shader) return
-
-  const width = gl.canvas.width
-  const height = gl.canvas.height
 
   if (shader.type === 'single') {
-    const channelSources = shader.channelSources || {}
-    gl.useProgram(shader.program)
-    if (shader.uniforms.iChannel0 !== null && shader.uniforms.iChannel0 !== undefined) {
-      const source = channelSources.iChannel0 || 'noise'
-      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
-      if (source === 'trail') webgl.updateTrailTexture()
-      bindChannel(gl, shader.uniforms, 'iChannel0', texture, 0)
+    gl.useProgram(shader.gpuProgram.handle)
+    for (let i = 0; i < 4; i++) {
+      const channelName = `iChannel${i}`
+      if (shader.uniforms[channelName] === null) continue
+      const source = shader.channelSources[channelName] || 'noise'
+      let texture = source === 'self' ? null : noiseTexture
+      if (source === 'trail') {
+        webgl.updateTrailTexture(shader.trailMipmaps, uploadFrame)
+        texture = webgl.trailTexture
+      }
+      bindChannel(gl, shader.uniforms, channelName, texture, i)
     }
-    if (shader.uniforms.iChannel1 !== null && shader.uniforms.iChannel1 !== undefined) {
-      const source = channelSources.iChannel1 || 'noise'
-      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
-      if (source === 'trail') webgl.updateTrailTexture()
-      bindChannel(gl, shader.uniforms, 'iChannel1', texture, 1)
-    }
-    if (shader.uniforms.iChannel2 !== null && shader.uniforms.iChannel2 !== undefined) {
-      const source = channelSources.iChannel2 || 'noise'
-      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
-      if (source === 'trail') webgl.updateTrailTexture()
-      bindChannel(gl, shader.uniforms, 'iChannel2', texture, 2)
-    }
-    if (shader.uniforms.iChannel3 !== null && shader.uniforms.iChannel3 !== undefined) {
-      const source = channelSources.iChannel3 || 'noise'
-      const texture = source === 'trail' ? webgl.trailTexture : (source === 'self' ? null : noiseTexture)
-      if (source === 'trail') webgl.updateTrailTexture()
-      bindChannel(gl, shader.uniforms, 'iChannel3', texture, 3)
-    }
-    drawQuad(gl, shader.uniforms, width, height, time, extra)
-  } else {
-    // Multi-pass rendering happens here
-    if (!fbos.buffera.ping) resizeFBOs(gl, fbos, width, height)
-    
-    let finalOutput = null
+    drawQuad(gl, shader.gpuProgram, shader.uniforms, width, height, time, extra)
+    return true
+  }
 
-    // Render all buffers multiple times for better simulation
+  const lastBufferName = [...BUFFER_ORDER].reverse().find(bufferName => shader.passes[bufferName]) || null
+
+  if (advanceSimulation) {
     for (let iteration = 0; iteration < MULTIPASS_ITERATIONS; iteration++) {
+      const written = new Set()
       for (const bufferName of BUFFER_ORDER) {
-        if (shader.passes[bufferName]) {
-          finalOutput = renderBufferPass(gl, shader, bufferName, fbos, noiseTexture, width, height, time, extra)
-        }
+        if (!shader.passes[bufferName]) continue
+        renderBufferPass(webgl, shader, bufferName, resources, written, width, height, time, extra)
       }
-    }
-
-    // Swap all FBOs after all buffers are rendered
-    for (const bufferName of BUFFER_ORDER) {
-      if (fbos[bufferName]) {
-        fbos[bufferName].current = 1 - fbos[bufferName].current
+      for (const bufferName of written) {
+        const pair = resources.buffers[bufferName]
+        pair.current = 1 - pair.current
       }
-    }
-
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    gl.viewport(0, 0, width, height)
-    gl.enable(gl.BLEND)
-    
-    if (shader.passes.image) {
-      const imageChannels = shader.passes.image.channels || {}
-      
-      gl.useProgram(shader.passes.image.program)
-      
-      const defaultImageChannels = {}
-      const mergedImageChannels = { ...defaultImageChannels, ...imageChannels }
-      
-      for (const [channelName, source] of Object.entries(mergedImageChannels)) {
-        if (!channelName.startsWith('iChannel')) continue
-        const unit = parseInt(channelName.replace('iChannel', ''))
-        
-        let texture = null
-        let textureSource = 'none'
-        if (source === 'trail') {
-          if (webgl && webgl.trailTexture) {
-            webgl.updateTrailTexture()
-            texture = webgl.trailTexture
-            textureSource = 'trail'
-          }
-        } else if (source === 'noise') {
-          texture = noiseTexture
-          textureSource = 'noise'
-        } else if (source === 'final' || !source) {
-          texture = finalOutput || noiseTexture
-          textureSource = 'finalOutput'
-        } else if (source === 'self') {
-          texture = finalOutput || noiseTexture
-          textureSource = 'self'
-        } else {
-          texture = getBufferTexture(fbos, source) || noiseTexture
-          textureSource = source
-        }
-        
-        const loc = shader.passes.image.uniforms[channelName]
-        if (texture && loc !== null && loc !== undefined) {
-          bindChannel(gl, shader.passes.image.uniforms, channelName, texture, unit)
-        }
-
-      }
-      
-      for (let i = 0; i < 4; i++) {
-        const channelName = `iChannel${i}`
-        if (!mergedImageChannels[channelName] && shader.passes.image.uniforms[channelName] !== null && shader.passes.image.uniforms[channelName] !== undefined) {
-          bindChannel(gl, shader.passes.image.uniforms, channelName, i === 0 ? (finalOutput || noiseTexture) : noiseTexture, i)
-        }
-      }
-      
-      drawQuad(gl, shader.passes.image.uniforms, width, height, time, extra)
     }
   }
+
+  const finalOutput = lastBufferName ? getReadTexture(resources, lastBufferName) : noiseTexture
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+  gl.viewport(0, 0, width, height)
+  gl.enable(gl.BLEND)
+
+  const imagePass = shader.passes.image
+  if (!imagePass) return false
+  gl.useProgram(imagePass.gpuProgram.handle)
+  const imageChannels = imagePass.channels || {}
+
+  for (let i = 0; i < 4; i++) {
+    const channelName = `iChannel${i}`
+    if (imagePass.uniforms[channelName] === null) continue
+    const source = imageChannels[channelName]
+    let texture = i === 0 ? finalOutput : noiseTexture
+    if (source === 'trail') {
+      webgl.updateTrailTexture(false, uploadFrame)
+      texture = webgl.trailTexture
+    } else if (source === 'noise') {
+      texture = noiseTexture
+    } else if (source === 'final' || source === 'self') {
+      texture = finalOutput
+    } else if (source && source !== 'final' && source !== 'self') {
+      texture = getReadTexture(resources, source) || noiseTexture
+    }
+    bindChannel(gl, imagePass.uniforms, channelName, texture, i)
+  }
+
+  drawQuad(gl, imagePass.gpuProgram, imagePass.uniforms, width, height, time, extra)
+  return true
 }
 
 export function renderTrail(webgl, joints, prevJoints, trailWidth = 2) {
   const { trailCtx } = webgl
   if (!trailCtx || !joints || !prevJoints) return
   
-  trailCtx.lineWidth = trailWidth
+  const cssToFramebuffer = trailCtx.canvas.width / Math.max(1, window.innerWidth)
+  trailCtx.lineWidth = trailWidth * cssToFramebuffer
   
+  let changed = false
   joints.forEach((joint, index) => {
-    if (joint.enabled && prevJoints[index]) {
+    if (joint.trailEnabled && prevJoints[index]) {
       const color = parseColor(joint.color)
       trailCtx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a / 255})`
       trailCtx.beginPath()
       trailCtx.moveTo(prevJoints[index].endX, prevJoints[index].endY)
       trailCtx.lineTo(joint.endX, joint.endY)
       trailCtx.stroke()
+      changed = true
     }
   })
+  if (changed) webgl.markTrailDirty()
 }
 
-export function resizeCanvas(canvas, gl = null, scale = 1) {
+export function getRenderSize(gl = null, scale = 1) {
   const dpr = window.devicePixelRatio || 1
-  canvas.width = window.innerWidth * dpr * scale
-  canvas.height = window.innerHeight * dpr * scale
+  const requestedWidth = Math.max(1, window.innerWidth * dpr * scale)
+  const requestedHeight = Math.max(1, window.innerHeight * dpr * scale)
+  const maxTextureSize = gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 8192
+  const maxViewport = gl ? gl.getParameter(gl.MAX_VIEWPORT_DIMS) : [8192, 8192]
+  const dimensionFactor = Math.min(
+    1,
+    Math.min(maxTextureSize, maxViewport[0]) / requestedWidth,
+    Math.min(maxTextureSize, maxViewport[1]) / requestedHeight
+  )
+  const pixelFactor = Math.min(1, Math.sqrt(MAX_RENDER_PIXELS / (requestedWidth * requestedHeight)))
+  const factor = Math.min(dimensionFactor, pixelFactor)
+  const width = Math.max(1, Math.floor(requestedWidth * factor))
+  const height = Math.max(1, Math.floor(requestedHeight * factor))
+  return { width, height, requestedScale: scale, effectiveScale: scale * factor, dpr }
+}
+
+export function resizeCanvas(canvas, gl = null, size = getRenderSize(gl)) {
+  canvas.width = size.width
+  canvas.height = size.height
   if (gl) gl.viewport(0, 0, canvas.width, canvas.height)
+  return size
 }
 
-export function resizeTrailCanvas(trailCanvas, scale = 1) {
-  const dpr = window.devicePixelRatio || 1
-  trailCanvas.width = window.innerWidth * dpr * scale
-  trailCanvas.height = window.innerHeight * dpr * scale
+export function resizeTrailCanvas(trailCanvas, size) {
+  trailCanvas.width = size.width
+  trailCanvas.height = size.height
 }
 
 export function clearTrail(trailCanvas) {
@@ -603,10 +730,11 @@ export function clearTrail(trailCanvas) {
 
 export function renderJoints(ctx, joints) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+  const cssToFramebuffer = ctx.canvas.width / Math.max(1, window.innerWidth)
 
   joints.forEach((joint) => {
     ctx.strokeStyle = '#00ff00'
-    ctx.lineWidth = JOINTS_WIDTH
+    ctx.lineWidth = JOINTS_WIDTH * cssToFramebuffer
     ctx.beginPath()
     ctx.moveTo(joint.startX, joint.startY)
     ctx.lineTo(joint.endX, joint.endY)
@@ -614,7 +742,7 @@ export function renderJoints(ctx, joints) {
 
     ctx.fillStyle = '#ff0000'
     ctx.beginPath()
-    ctx.arc(joint.endX, joint.endY, JOINT_END_SIZE / 2, 0, Math.PI * 2)
+    ctx.arc(joint.endX, joint.endY, JOINT_END_SIZE * cssToFramebuffer / 2, 0, Math.PI * 2)
     ctx.fill()
   })
 }

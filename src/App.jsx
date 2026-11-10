@@ -1,25 +1,38 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import SidePanel from './SidePanel'
 import AppState from './AppState'
-import { initWebGL, renderWebGL, renderTrail, resizeCanvas, resizeTrailCanvas, resizeFBOs, renderJoints, availableShaders } from './renderer'
+import {
+  availableShaders,
+  clearTrail as clearTrailCanvas,
+  disposeWebGL,
+  getRenderSize,
+  initWebGL,
+  renderJoints,
+  renderTrail,
+  renderWebGL,
+  resetWebGLEffect,
+  resizeCanvas,
+  resizeTrailCanvas,
+  resizeWebGL
+} from './renderer'
 
-const FPS_WINDOW = 30
+const MAX_DELTA_SECONDS = 0.05
+const FPS_UPDATE_INTERVAL_SECONDS = 0.5
 
 export default function App() {
   const [fps, setFps] = useState(0)
   const [sidePanelVisible, setSidePanelVisible] = useState(false)
   const [isPaused, setIsPaused] = useState(true)
-  const fpsHistoryRef = useRef([])
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
   const [trailEnabled, setTrailEnabled] = useState(true)
-  const [effect, setEffect] = useState(availableShaders[0]?.name || 'art')
+  const [effect, setEffect] = useState(availableShaders[0]?.name || '')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
   const [selectedPreset, setSelectedPreset] = useState(0)
-  const [resolutionScale, setResolutionScale] = useState(1.0)
+  const [resolutionScale, setResolutionScale] = useState(1)
+  const [effectiveResolutionScale, setEffectiveResolutionScale] = useState(1)
   const [trailWidth, setTrailWidth] = useState(10)
-
-  const savedSpeedRef = useRef(speedMultiplier)
+  const [rendererError, setRendererError] = useState('')
 
   const canvasRef = useRef(null)
   const trailCanvasRef = useRef(null)
@@ -27,189 +40,195 @@ export default function App() {
   const webglRef = useRef(null)
   const rafRef = useRef(null)
   const lastTimeRef = useRef(0)
-  const deltaTimeRef = useRef(0.016)
+  const appTimeRef = useRef(0)
+  const fpsStatsRef = useRef({ elapsed: 0, frames: 0 })
   const prevJointsRef = useRef(null)
-  const prevEmitterRef = useRef(null)
+  const prevSimulatedEmitterRef = useRef(null)
   const appStateRef = useRef(new AppState())
-  const speedMultiplierRef = useRef(1)
-  const shaderEnabledRef = useRef(true)
-  const jointsEnabledRef = useRef(true)
-  const trailEnabledRef = useRef(true)
-  const effectRef = useRef('plasma')
-  const resolutionScaleRef = useRef(1)
-  const trailWidthRef = useRef(2)
-  const isPausedRef = useRef(false)
+  const needsRenderRef = useRef(true)
+  const failedEffectRef = useRef(null)
+  const documentHiddenRef = useRef(document.hidden)
+  const contextLostRef = useRef(false)
+
+  const speedMultiplierRef = useRef(speedMultiplier)
+  const shaderEnabledRef = useRef(shaderEnabled)
+  const jointsEnabledRef = useRef(jointsEnabled)
+  const trailEnabledRef = useRef(trailEnabled)
+  const effectRef = useRef(effect)
+  const resolutionScaleRef = useRef(resolutionScale)
+  const trailWidthRef = useRef(trailWidth)
+  const isPausedRef = useRef(isPaused)
   const mouseRef = useRef({ x: 0, y: 0, pressed: false })
 
-  useEffect(() => {
-    speedMultiplierRef.current = speedMultiplier
-  }, [speedMultiplier])
+  useEffect(() => { speedMultiplierRef.current = speedMultiplier }, [speedMultiplier])
+  useEffect(() => { shaderEnabledRef.current = shaderEnabled }, [shaderEnabled])
+  useEffect(() => { jointsEnabledRef.current = jointsEnabled }, [jointsEnabled])
+  useEffect(() => { trailEnabledRef.current = trailEnabled }, [trailEnabled])
+  useEffect(() => { effectRef.current = effect }, [effect])
+  useEffect(() => { resolutionScaleRef.current = resolutionScale }, [resolutionScale])
+  useEffect(() => { trailWidthRef.current = trailWidth }, [trailWidth])
+  useEffect(() => { isPausedRef.current = isPaused }, [isPaused])
 
-  useEffect(() => {
-    resolutionScaleRef.current = resolutionScale
-  }, [resolutionScale])
-
-  useEffect(() => {
-    trailWidthRef.current = trailWidth
-  }, [trailWidth])
-
-  useEffect(() => {
-    shaderEnabledRef.current = shaderEnabled
-  }, [shaderEnabled])
-
-  useEffect(() => {
-    jointsEnabledRef.current = jointsEnabled
-  }, [jointsEnabled])
-
-  useEffect(() => {
-    trailEnabledRef.current = trailEnabled
-  }, [trailEnabled])
-
-  useEffect(() => {
-    effectRef.current = effect
-  }, [effect])
-
-  useEffect(() => {
-    if (isPaused) {
-      savedSpeedRef.current = speedMultiplierRef.current
-      speedMultiplierRef.current = 0
-    } else {
-      speedMultiplierRef.current = savedSpeedRef.current || 1
-    }
-  }, [isPaused])
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        isPausedRef.current = true
-      } else {
-        lastTimeRef.current = 0
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
+  const clearTrail = useCallback(() => {
+    if (trailCanvasRef.current) clearTrailCanvas(trailCanvasRef.current)
+    webglRef.current?.markTrailDirty()
   }, [])
+
+  const resetTemporalState = useCallback((resetShader = false) => {
+    prevJointsRef.current = null
+    prevSimulatedEmitterRef.current = null
+    clearTrail()
+    if (resetShader && webglRef.current) resetWebGLEffect(webglRef.current, effectRef.current)
+    needsRenderRef.current = true
+  }, [clearTrail])
 
   const init = useCallback(() => {
     const canvas = canvasRef.current
     const trailCanvas = trailCanvasRef.current
-    if (!canvas || !trailCanvas) return
+    if (!canvas || !trailCanvas) return null
 
     const webgl = initWebGL(canvas, trailCanvas)
-    if (webgl) {
-      webglRef.current = webgl
-    }
+    webglRef.current = webgl
+    contextLostRef.current = false
+    setRendererError(webgl ? '' : 'WebGL 2 is not supported by this browser or GPU.')
+    return webgl
   }, [])
 
   const resize = useCallback(() => {
     const canvas = canvasRef.current
-    const webgl = webglRef.current
-    if (canvas && webgl) {
-      resizeCanvas(canvas, webgl.gl, resolutionScaleRef.current)
-      resizeFBOs(webgl.gl, webgl.fbos, canvas.width, canvas.height)
-    }
     const trailCanvas = trailCanvasRef.current
-    if (trailCanvas) {
-      resizeTrailCanvas(trailCanvas, resolutionScaleRef.current)
-    }
     const jointsCanvas = jointsCanvasRef.current
-    if (jointsCanvas) {
-      resizeCanvas(jointsCanvas, null, resolutionScaleRef.current)
-    }
-  }, [])
+    if (!canvas || !trailCanvas || !jointsCanvas) return
 
-  useEffect(() => {
-    resize()
-  }, [resolutionScale, resize])
+    const webgl = webglRef.current
+    const size = getRenderSize(webgl?.gl || null, resolutionScaleRef.current)
+    resizeCanvas(canvas, webgl?.gl || null, size)
+    resizeTrailCanvas(trailCanvas, size)
+    resizeCanvas(jointsCanvas, null, size)
+    if (webgl) resizeWebGL(webgl)
+    mouseRef.current.pressed = false
 
-  const clearTrail = useCallback(() => {
-    const trailCanvas = trailCanvasRef.current
-    if (trailCanvas) {
-      const ctx = trailCanvas.getContext('2d')
-      ctx.clearRect(0, 0, trailCanvas.width, trailCanvas.height)
-    }
-  }, [])
+    setEffectiveResolutionScale(current => (
+      Math.abs(current - size.effectiveScale) > 0.001 ? size.effectiveScale : current
+    ))
+    resetTemporalState(false)
+  }, [resetTemporalState])
 
   const handlePresetChange = useCallback((index) => {
     appStateRef.current.loadPreset(index)
-    prevJointsRef.current = null
-    clearTrail()
     setSelectedPreset(index)
-  }, [clearTrail])
+    resetTemporalState(true)
+  }, [resetTemporalState])
+
+  const handleEffectChange = useCallback((nextEffect) => {
+    effectRef.current = nextEffect
+    setEffect(nextEffect)
+    resetTemporalState(false)
+  }, [resetTemporalState])
+
+  const handlePauseToggle = useCallback(() => {
+    setIsPaused(current => {
+      const next = !current
+      isPausedRef.current = next
+      lastTimeRef.current = 0
+      needsRenderRef.current = true
+      return next
+    })
+  }, [])
+
+  const handleTrailToggle = useCallback((enabled) => {
+    trailEnabledRef.current = enabled
+    setTrailEnabled(enabled)
+    resetTemporalState(false)
+  }, [resetTemporalState])
 
   const render = useCallback((time) => {
     const webgl = webglRef.current
     const canvas = canvasRef.current
+    const trailCanvas = trailCanvasRef.current
+    const jointsCanvas = jointsCanvasRef.current
 
-    if (lastTimeRef.current > 0) {
-      const deltaTime = time - lastTimeRef.current
-      deltaTimeRef.current = deltaTime / 1000
-      if (!isPausedRef.current) {
-        appStateRef.current.updateJoints(deltaTime, speedMultiplierRef.current)
-      }
-      
-      // FPS calculation
-      const currentFps = 1000 / deltaTime
-      fpsHistoryRef.current.push(currentFps)
-      if (fpsHistoryRef.current.length > FPS_WINDOW) {
-        fpsHistoryRef.current.shift()
-      }
-      const avgFps = fpsHistoryRef.current.reduce((a, b) => a + b, 0) / fpsHistoryRef.current.length
-      setFps(Math.round(avgFps))
-    }
+    let rawDeltaSeconds = 0
+    if (lastTimeRef.current > 0) rawDeltaSeconds = Math.max(0, (time - lastTimeRef.current) / 1000)
     lastTimeRef.current = time
-    isPausedRef.current = false
 
-    const joints = appStateRef.current.calculateJoints(window.innerWidth, window.innerHeight)
+    const isRunning = !isPausedRef.current && !documentHiddenRef.current
+    const deltaSeconds = isRunning ? Math.min(rawDeltaSeconds, MAX_DELTA_SECONDS) : 0
+    if (isRunning && deltaSeconds > 0) {
+      appTimeRef.current += deltaSeconds
+      appStateRef.current.updateJoints(deltaSeconds, speedMultiplierRef.current)
 
-    if (webgl && canvas && shaderEnabledRef.current) {
-      const lastJoint = joints.length > 0 ? joints[joints.length - 1] : null
-      let velX = 0, velY = 0
-      if (lastJoint && prevEmitterRef.current) {
-        velX = lastJoint.endX - prevEmitterRef.current.x
-        velY = lastJoint.endY - prevEmitterRef.current.y
+      const stats = fpsStatsRef.current
+      stats.elapsed += rawDeltaSeconds
+      stats.frames += 1
+      if (stats.elapsed >= FPS_UPDATE_INTERVAL_SECONDS) {
+        setFps(Math.round(stats.frames / stats.elapsed))
+        fpsStatsRef.current = { elapsed: 0, frames: 0 }
       }
-      
-      // Use mouse position if pressed, otherwise use joint position
+    }
+
+    const shouldDraw = !documentHiddenRef.current && (isRunning || needsRenderRef.current)
+    if (shouldDraw && canvas && trailCanvas && jointsCanvas) {
+      const joints = appStateRef.current.calculateJoints(canvas.width, canvas.height)
+
+      if (isRunning && trailEnabledRef.current && webgl) {
+        renderTrail(webgl, joints, prevJointsRef.current, trailWidthRef.current)
+      }
+
+      const lastJoint = joints.at(-1) || null
       const mouse = mouseRef.current
-      const useMouse = mouse.pressed
-      const mouseX = useMouse ? mouse.x : (lastJoint ? lastJoint.endX : null)
-      const mouseY = useMouse ? mouse.y : (lastJoint ? lastJoint.endY : null)
-      const mouseZ = useMouse ? 2.0 : 0.0  // z > 1 means mouse is pressed (shader expects > 1)
-      
-      renderWebGL(
-        webgl,
-        time,
-        effectRef.current,
-        mouseX,
-        mouseY,
-        velX,
-        velY,
-        deltaTimeRef.current,
-        mouseZ
-      )
-      if (lastJoint) {
-        prevEmitterRef.current = { x: lastJoint.endX, y: lastJoint.endY }
+      const emitterSource = mouse.pressed ? 'pointer' : lastJoint ? 'joint' : null
+      const emitter = mouse.pressed
+        ? { x: mouse.x, y: mouse.y }
+        : lastJoint
+          ? { x: lastJoint.endX, y: lastJoint.endY }
+          : null
+
+      let velocityX = 0
+      let velocityY = 0
+      const previousEmitter = prevSimulatedEmitterRef.current
+      const emitterContinues = Boolean(emitter && previousEmitter?.source === emitterSource)
+      if (emitterContinues && deltaSeconds > 0) {
+        velocityX = (emitter.x - previousEmitter.x) / deltaSeconds
+        velocityY = (emitter.y - previousEmitter.y) / deltaSeconds
       }
-    }
 
-    if (webgl) {
-      renderTrail(webgl, joints, prevJointsRef.current, trailWidthRef.current)
-    }
+      if (webgl && shaderEnabledRef.current && !contextLostRef.current && !webgl.gl.isContextLost()) {
+        const rendered = renderWebGL(
+          webgl,
+          appTimeRef.current * 1000,
+          effectRef.current,
+          emitter?.x,
+          emitter?.y,
+          velocityX,
+          velocityY,
+          deltaSeconds,
+          emitterContinues ? 2 : 0,
+          isRunning
+        )
+        canvas.dataset.shaderFrame = String(webgl.frameCounters.get(effectRef.current) || 0)
+        canvas.dataset.activeEffect = effectRef.current
+        if (rendered && isRunning) {
+          prevSimulatedEmitterRef.current = emitter
+            ? { ...emitter, source: emitterSource }
+            : null
+        }
+        if (!rendered && failedEffectRef.current !== effectRef.current) {
+          failedEffectRef.current = effectRef.current
+          setRendererError(`Effect "${effectRef.current}" is unavailable on this GPU.`)
+        } else if (rendered && failedEffectRef.current) {
+          failedEffectRef.current = null
+          setRendererError('')
+        }
+      }
 
-    if (jointsEnabledRef.current && jointsCanvasRef.current) {
-      const ctx = jointsCanvasRef.current.getContext('2d')
-      renderJoints(ctx, joints)
-    } else if (jointsCanvasRef.current) {
-      const ctx = jointsCanvasRef.current.getContext('2d')
-      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-    }
+      const jointsContext = jointsCanvas.getContext('2d')
+      if (jointsEnabledRef.current) renderJoints(jointsContext, joints)
+      else jointsContext.clearRect(0, 0, jointsCanvas.width, jointsCanvas.height)
 
-    prevJointsRef.current = joints
+      prevJointsRef.current = joints
+      needsRenderRef.current = false
+    }
 
     rafRef.current = requestAnimationFrame(render)
   }, [])
@@ -219,77 +238,104 @@ export default function App() {
     init()
     resize()
 
-    const handleResize = () => resize()
+    const canvas = canvasRef.current
+    let resizeRaf = null
+    const handleResize = () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf)
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null
+        resize()
+      })
+    }
+    const handleVisibilityChange = () => {
+      documentHiddenRef.current = document.hidden
+      lastTimeRef.current = 0
+      if (!document.hidden) needsRenderRef.current = true
+    }
+    const handleContextLost = (event) => {
+      event.preventDefault()
+      contextLostRef.current = true
+      setRendererError('WebGL context was lost. Waiting for recovery…')
+    }
+    const handleContextRestored = () => {
+      contextLostRef.current = false
+      webglRef.current = null
+      init()
+      resize()
+      needsRenderRef.current = true
+    }
 
     window.addEventListener('resize', handleResize)
-
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    canvas?.addEventListener('webglcontextlost', handleContextLost)
+    canvas?.addEventListener('webglcontextrestored', handleContextRestored)
     rafRef.current = requestAnimationFrame(render)
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      canvas?.removeEventListener('webglcontextlost', handleContextLost)
+      canvas?.removeEventListener('webglcontextrestored', handleContextRestored)
+      if (resizeRaf) cancelAnimationFrame(resizeRaf)
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      disposeWebGL(webglRef.current)
+      webglRef.current = null
     }
-  }, [init, resize, render])
+  }, [init, render, resize])
+
+  useEffect(() => {
+    if (!webglRef.current) return undefined
+    const resizeRaf = requestAnimationFrame(resize)
+    return () => cancelAnimationFrame(resizeRaf)
+  }, [resolutionScale, resize])
+
+  const updatePointer = useCallback((event, pressed = mouseRef.current.pressed) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    mouseRef.current = {
+      x: (event.clientX - rect.left) * (canvas.width / rect.width),
+      y: (event.clientY - rect.top) * (canvas.height / rect.height),
+      pressed
+    }
+    if (isPausedRef.current) {
+      prevSimulatedEmitterRef.current = null
+      needsRenderRef.current = true
+    }
+  }, [])
 
   return (
     <>
       <div style={{
-        display: shaderEnabled ? 'none' : 'block',
-        width: '100vw',
-        height: '100vh',
+        position: 'fixed',
+        inset: 0,
         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)'
       }} />
-      <div style={{
-        position: 'fixed',
-        top: 10,
-        left: 10,
-        color: 'white',
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        background: 'rgba(0,0,0,0.5)',
-        padding: '4px 8px',
-        borderRadius: '4px',
-        zIndex: 1000
-      }}>
-        {fps} FPS
-      </div>
-      <canvas ref={canvasRef} style={{
-        display: shaderEnabled ? 'block' : 'none',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        zIndex: 1
-      }}
-      onMouseDown={(e) => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const rect = canvas.getBoundingClientRect()
-        const x = (e.clientX - rect.left) * (canvas.width / rect.width)
-        const y = (e.clientY - rect.top) * (canvas.height / rect.height)
-        mouseRef.current = { x, y: canvas.height - y, pressed: true }
-      }}
-      onMouseMove={(e) => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const rect = canvas.getBoundingClientRect()
-        const x = (e.clientX - rect.left) * (canvas.width / rect.width)
-        const y = (e.clientY - rect.top) * (canvas.height / rect.height)
-        mouseRef.current = { ...mouseRef.current, x, y: canvas.height - y }
-      }}
-      onMouseUp={() => {
-        mouseRef.current.pressed = false
-      }}
-      onMouseLeave={() => {
-        mouseRef.current.pressed = false
-      }}
+
+      <canvas
+        ref={canvasRef}
+        aria-label="Interactive pixel shader"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId)
+          updatePointer(event, true)
+        }}
+        onPointerMove={(event) => updatePointer(event)}
+        onPointerUp={(event) => updatePointer(event, false)}
+        onPointerCancel={() => { mouseRef.current.pressed = false }}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          height: '100vh',
+          opacity: shaderEnabled ? 1 : 0,
+          touchAction: 'none',
+          zIndex: 1
+        }}
       />
       <canvas ref={trailCanvasRef} style={{
         display: trailEnabled ? 'block' : 'none',
         position: 'fixed',
-        top: 0,
-        left: 0,
+        inset: 0,
         width: '100vw',
         height: '100vh',
         pointerEvents: 'none',
@@ -298,38 +344,88 @@ export default function App() {
       <canvas ref={jointsCanvasRef} style={{
         display: jointsEnabled ? 'block' : 'none',
         position: 'fixed',
-        top: 0,
-        left: 0,
+        inset: 0,
         width: '100vw',
         height: '100vh',
         pointerEvents: 'none',
         zIndex: 3
       }} />
+
+      <div style={{
+        position: 'fixed',
+        top: 10,
+        left: 10,
+        color: 'white',
+        fontFamily: 'monospace',
+        fontSize: 14,
+        background: 'rgba(0,0,0,0.5)',
+        padding: '4px 8px',
+        borderRadius: 4,
+        zIndex: 1000
+      }}>
+        {isPaused ? 'Paused' : `${fps} FPS`}
+      </div>
+
+      {rendererError && (
+        <div role="alert" style={{
+          position: 'fixed',
+          left: '50%',
+          bottom: 20,
+          transform: 'translateX(-50%)',
+          color: '#fff',
+          background: 'rgba(140, 20, 20, 0.9)',
+          padding: '8px 12px',
+          borderRadius: 6,
+          zIndex: 1002
+        }}>
+          {rendererError}
+        </div>
+      )}
+
       <SidePanel
         visible={sidePanelVisible}
         isPaused={isPaused}
-        onTogglePause={() => setIsPaused(!isPaused)}
+        onTogglePause={handlePauseToggle}
         shaderEnabled={shaderEnabled}
-        onToggleShader={setShaderEnabled}
+        onToggleShader={(enabled) => {
+          shaderEnabledRef.current = enabled
+          setShaderEnabled(enabled)
+          needsRenderRef.current = true
+        }}
         jointsEnabled={jointsEnabled}
-        onToggleJoints={setJointsEnabled}
+        onToggleJoints={(enabled) => {
+          jointsEnabledRef.current = enabled
+          setJointsEnabled(enabled)
+          needsRenderRef.current = true
+        }}
         trailEnabled={trailEnabled}
-        onToggleTrail={setTrailEnabled}
+        onToggleTrail={handleTrailToggle}
         effect={effect}
-        onEffectChange={setEffect}
-        speedMultiplier={isPaused ? 0 : speedMultiplier}
-        onSpeedChange={setSpeedMultiplier}
+        onEffectChange={handleEffectChange}
+        speedMultiplier={speedMultiplier}
+        onSpeedChange={(value) => {
+          speedMultiplierRef.current = value
+          setSpeedMultiplier(value)
+        }}
         presetNames={appStateRef.current.getPresetNames()}
         selectedPreset={selectedPreset}
         onPresetChange={handlePresetChange}
-        shaderNames={availableShaders.map(s => s.name)}
+        shaderNames={availableShaders.map(shader => shader.name)}
         resolutionScale={resolutionScale}
+        effectiveResolutionScale={effectiveResolutionScale}
         onResolutionScaleChange={setResolutionScale}
         trailWidth={trailWidth}
-        onTrailWidthChange={setTrailWidth}
+        onTrailWidthChange={(value) => {
+          trailWidthRef.current = value
+          setTrailWidth(value)
+        }}
       />
+
       <button
-        onClick={() => setSidePanelVisible(!sidePanelVisible)}
+        type="button"
+        onClick={() => setSidePanelVisible(visible => !visible)}
+        aria-label={sidePanelVisible ? 'Close settings' : 'Open settings'}
+        aria-expanded={sidePanelVisible}
         style={{
           position: 'fixed',
           top: 10,
@@ -338,9 +434,9 @@ export default function App() {
           height: 40,
           background: 'rgba(0,0,0,0.5)',
           border: 'none',
-          borderRadius: '4px',
+          borderRadius: 4,
           color: 'white',
-          fontSize: '20px',
+          fontSize: 20,
           cursor: 'pointer',
           zIndex: 1001,
           display: 'flex',

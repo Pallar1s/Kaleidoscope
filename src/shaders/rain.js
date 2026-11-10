@@ -3,6 +3,8 @@ export const channelSources = {
   iChannel0: 'trail'
 }
 
+export const trailMipmaps = true
+
 export const rainFragmentShader = `
   precision highp float;
   

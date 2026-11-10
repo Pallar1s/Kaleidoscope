@@ -30,13 +30,20 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          
-      - name: Clean node modules
-        run: rm -rf node_modules package-lock.json
+          node-version: '22'
+          cache: 'npm'
         
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Install browser for WebGL smoke test
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        run: npm run test:browser
         
       - name: Build
         run: npm run build
@@ -47,7 +54,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './docs'
+          path: './dist'
           
       - name: Deploy to GitHub Pages
         id: deployment

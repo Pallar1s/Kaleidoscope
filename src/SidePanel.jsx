@@ -1,6 +1,6 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
+export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, effectiveResolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
   if (!visible) return null
 
   return (
@@ -8,11 +8,12 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
       <h2 className={styles.title}>Settings</h2>
       
       <div className={`${styles.setting} ${styles.dropdown}`}>
-        <span className={styles.label}>Joint preset</span>
+        <label className={styles.label} htmlFor="joint-preset">Joint preset</label>
         <select
+          id="joint-preset"
           className={styles.select}
           value={selectedPreset}
-          onChange={(e) => onPresetChange(parseInt(e.target.value))}
+          onChange={(e) => onPresetChange(Number.parseInt(e.target.value, 10))}
         >
           {presetNames.map((name, index) => (
             <option key={index} value={index}>{name}</option>
@@ -21,8 +22,9 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
       </div>
 
       <div className={`${styles.setting} ${styles.dropdown}`}>
-        <span className={styles.label}>Shader effect</span>
+        <label className={styles.label} htmlFor="shader-effect">Shader effect</label>
         <select
+          id="shader-effect"
           className={styles.select}
           value={effect}
           onChange={(e) => onEffectChange(e.target.value)}
@@ -35,17 +37,21 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
 
       <div className={styles.setting}>
         <button
+          type="button"
           onClick={onTogglePause}
           className={`${styles.playPauseButton} ${isPaused ? styles.pulsing : ''}`}
           title={isPaused ? "Play" : "Pause"}
+          aria-label={isPaused ? "Play animation" : "Pause animation"}
         >
           {isPaused ? "▶" : "⏸"}
         </button>
       </div>
 
       <div className={styles.setting}>
-        <span className={styles.label}>Speed: {speedMultiplier.toFixed(1)}</span>
+        <label className={styles.label} htmlFor="speed">Speed: {speedMultiplier.toFixed(1)}</label>
         <input
+          id="speed"
+            className={styles.slider}
           type="range"
           min="0"
           max="10"
@@ -60,6 +66,7 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
         <label className={styles.toggle}>
           <input
             type="checkbox"
+              aria-label="Shader effect"
             checked={shaderEnabled}
             onChange={(e) => onToggleShader(e.target.checked)}
           />
@@ -72,6 +79,7 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
         <label className={styles.toggle}>
           <input
             type="checkbox"
+              aria-label="Joints"
             checked={jointsEnabled}
             onChange={(e) => onToggleJoints(e.target.checked)}
           />
@@ -84,6 +92,7 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
         <label className={styles.toggle}>
           <input
             type="checkbox"
+              aria-label="Trail"
             checked={trailEnabled}
             onChange={(e) => onToggleTrail(e.target.checked)}
           />
@@ -93,8 +102,10 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
       </div>
 
       <div className={styles.setting}>
-        <span className={styles.label}>Trail Width: {trailWidth}</span>
+        <label className={styles.label} htmlFor="trail-width">Trail Width: {trailWidth}</label>
         <input
+          id="trail-width"
+          className={styles.slider}
           type="range"
           min="1"
           max="50"
@@ -105,11 +116,18 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
       </div>
 
       <div className={styles.setting}>
-        <span className={styles.label}>Resolution: {resolutionScale.toFixed(2)}x</span>
+        <label className={styles.label} htmlFor="resolution-scale">
+          Resolution: {resolutionScale.toFixed(2)}x
+          {Math.abs(resolutionScale - effectiveResolutionScale) > 0.01
+            ? ` (capped at ${effectiveResolutionScale.toFixed(2)}x)`
+            : ''}
+        </label>
         <input
+          id="resolution-scale"
+          className={styles.slider}
           type="range"
           min="0.25"
-          max="4"
+          max="2"
           step="0.25"
           value={resolutionScale}
           onChange={(e) => onResolutionScaleChange(parseFloat(e.target.value))}
