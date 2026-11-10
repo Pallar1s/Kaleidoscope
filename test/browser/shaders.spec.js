@@ -54,6 +54,38 @@ test('all shaders compile and feedback stays frozen while paused', async ({ page
   await page.waitForTimeout(50)
   expect(await canvas.getAttribute('data-shader-frame')).toBe(frameBefore)
 
+  const fluidSampler = await canvas.evaluate(element => {
+    const gl = element.getContext('webgl2')
+    gl.activeTexture(gl.TEXTURE0)
+    const sampler = gl.getParameter(gl.SAMPLER_BINDING)
+    if (!sampler) return null
+    return {
+      minFilter: gl.getSamplerParameter(sampler, gl.TEXTURE_MIN_FILTER),
+      magFilter: gl.getSamplerParameter(sampler, gl.TEXTURE_MAG_FILTER),
+      wrapS: gl.getSamplerParameter(sampler, gl.TEXTURE_WRAP_S),
+      wrapT: gl.getSamplerParameter(sampler, gl.TEXTURE_WRAP_T),
+      linear: gl.LINEAR,
+      repeat: gl.REPEAT
+    }
+  })
+  expect(fluidSampler).not.toBeNull()
+  expect(fluidSampler).toEqual({
+    minFilter: fluidSampler.linear,
+    magFilter: fluidSampler.linear,
+    wrapS: fluidSampler.repeat,
+    wrapT: fluidSampler.repeat,
+    linear: fluidSampler.linear,
+    repeat: fluidSampler.repeat
+  })
+
+  await shaderSelect.selectOption({ label: 'balls' })
+  await expect(canvas).toHaveAttribute('data-active-effect', 'balls', { timeout: 20_000 })
+  expect(await canvas.evaluate(element => {
+    const gl = element.getContext('webgl2')
+    gl.activeTexture(gl.TEXTURE0)
+    return gl.getParameter(gl.SAMPLER_BINDING) === null
+  })).toBe(true)
+
   expect(consoleErrors.filter(message => /Shader error|Framebuffer is incomplete|WebGL error/i.test(message))).toEqual([])
 })
 

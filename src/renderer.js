@@ -188,6 +188,45 @@ const BUFFER_CHANNELS = {
   bufferd: { iChannel0: 'bufferc', iChannel1: 'noise' }
 }
 
+const SAMPLER_FILTERS = {
+  nearest: gl => gl.NEAREST,
+  linear: gl => gl.LINEAR
+}
+
+const SAMPLER_WRAPS = {
+  clamp: gl => gl.CLAMP_TO_EDGE,
+  repeat: gl => gl.REPEAT,
+  mirror: gl => gl.MIRRORED_REPEAT
+}
+
+function createSampler(gl, options) {
+  const sampler = gl.createSampler()
+  const minFilter = SAMPLER_FILTERS[options.minFilter || options.filter || 'nearest']
+  const magFilter = SAMPLER_FILTERS[options.magFilter || options.filter || 'nearest']
+  const wrapS = SAMPLER_WRAPS[options.wrapS || options.wrap || 'clamp']
+  const wrapT = SAMPLER_WRAPS[options.wrapT || options.wrap || 'clamp']
+
+  if (!minFilter || !magFilter || !wrapS || !wrapT) {
+    gl.deleteSampler(sampler)
+    throw new Error(`Unsupported sampler options: ${JSON.stringify(options)}`)
+  }
+
+  gl.samplerParameteri(sampler, gl.TEXTURE_MIN_FILTER, minFilter(gl))
+  gl.samplerParameteri(sampler, gl.TEXTURE_MAG_FILTER, magFilter(gl))
+  gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_S, wrapS(gl))
+  gl.samplerParameteri(sampler, gl.TEXTURE_WRAP_T, wrapT(gl))
+  return sampler
+}
+
+function getSampler(webgl, options) {
+  if (!options) return null
+  const key = JSON.stringify(options)
+  if (!webgl.samplerCache.has(key)) {
+    webgl.samplerCache.set(key, createSampler(webgl.gl, options))
+  }
+  return webgl.samplerCache.get(key)
+}
+
 function createNoiseTexture(gl, size = 256) {
   const data = new Uint8Array(size * size * 4)
   for (let i = 0; i < data.length; i += 4) {
@@ -220,6 +259,7 @@ function discoverShaders() {
     if (keys.length > 1) {
       const common = module.common || ''
       const channels = module.channels || {}
+      const samplers = module.samplers || {}
       const passSizes = module.passSizes || {}
       const passes = {}
       
@@ -242,6 +282,7 @@ function discoverShaders() {
         passes[passName] = {
           fragmentShader: common + module[key],
           channels: channelConfig,
+          samplers: samplers[passName] || {},
           size: passSizes[passName] || null
         }
       }
@@ -295,6 +336,7 @@ function compileShaderDefinition(gl, shader) {
       gpuProgram,
       uniforms: getUniforms(gl, gpuProgram.handle),
       channels: pass.channels,
+      samplers: pass.samplers,
       size: pass.size
     }
   }
@@ -368,6 +410,7 @@ export function initWebGL(canvas, trailCanvas) {
     shaderDefinitions,
     effectResources: new Map(),
     frameCounters: new Map(),
+    samplerCache: new Map(),
     renderSequence: 0,
     activeEffect: null,
     supportsFloatTargets,
@@ -402,12 +445,13 @@ function setUniforms(gl, uniforms, width, height, time, extra) {
   }
 }
 
-function bindChannel(gl, uniforms, name, texture, unit) {
+function bindChannel(webgl, uniforms, name, texture, unit, samplerOptions = null) {
+  const { gl } = webgl
   const location = uniforms[name]
   if (location === null || location === undefined) return
-  if (!texture) return
   gl.activeTexture(gl.TEXTURE0 + unit)
-  gl.bindTexture(gl.TEXTURE_2D, texture)
+  gl.bindTexture(gl.TEXTURE_2D, texture || null)
+  gl.bindSampler(unit, texture ? getSampler(webgl, samplerOptions) : null)
   gl.uniform1i(location, unit)
 }
 
@@ -526,7 +570,7 @@ function renderBufferPass(webgl, shader, passName, resources, written, width, he
           : getReadTarget(sourcePair).texture
       }
     }
-    bindChannel(gl, pass.uniforms, channelName, texture, i)
+    bindChannel(webgl, pass.uniforms, channelName, texture, i, pass.samplers?.[channelName])
   }
 
   drawQuad(gl, pass.gpuProgram, pass.uniforms, width, height, time, extra)
@@ -556,6 +600,8 @@ export function disposeWebGL(webgl) {
     else Object.values(shader.passes).forEach(pass => destroyGpuProgram(webgl.gl, pass.gpuProgram))
   }
   webgl.shaderPrograms.clear()
+  for (const sampler of webgl.samplerCache.values()) webgl.gl.deleteSampler(sampler)
+  webgl.samplerCache.clear()
   webgl.gl.deleteTexture(webgl.noiseTexture)
   webgl.gl.deleteTexture(webgl.trailTexture)
 }
@@ -617,7 +663,7 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
         webgl.updateTrailTexture(shader.trailMipmaps, uploadFrame)
         texture = webgl.trailTexture
       }
-      bindChannel(gl, shader.uniforms, channelName, texture, i)
+      bindChannel(webgl, shader.uniforms, channelName, texture, i)
     }
     drawQuad(gl, shader.gpuProgram, shader.uniforms, width, height, time, extra)
     return true
@@ -664,7 +710,7 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     } else if (source && source !== 'final' && source !== 'self') {
       texture = getReadTexture(resources, source) || noiseTexture
     }
-    bindChannel(gl, imagePass.uniforms, channelName, texture, i)
+    bindChannel(webgl, imagePass.uniforms, channelName, texture, i, imagePass.samplers?.[channelName])
   }
 
   drawQuad(gl, imagePass.gpuProgram, imagePass.uniforms, width, height, time, extra)

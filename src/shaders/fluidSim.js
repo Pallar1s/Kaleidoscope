@@ -238,3 +238,16 @@ export const channels = {
   bufferd: { iChannel0: 'buffera', iChannel1: 'bufferd' },
   image: { iChannel0: 'bufferd' }
 }
+
+// ShaderToy stores these settings outside the GLSL source. Fractional
+// backtracing in the advection steps requires linear interpolation.
+export const samplers = {
+  buffera: { iChannel0: { filter: 'linear', wrap: 'repeat' } },
+  bufferb: { iChannel0: { filter: 'linear', wrap: 'repeat' } },
+  bufferc: { iChannel0: { filter: 'linear', wrap: 'repeat' } },
+  bufferd: {
+    iChannel0: { filter: 'linear', wrap: 'clamp' },
+    iChannel1: { filter: 'linear', wrap: 'repeat' }
+  },
+  image: { iChannel0: { filter: 'linear', wrap: 'repeat' } }
+}
