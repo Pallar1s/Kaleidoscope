@@ -90,8 +90,8 @@ vec2 pen(float t) {
 
 #define dt 0.15
 #define K 0.2
-#define nu 0.4
-#define kappa 1.68
+#define nu 0.5
+#define kappa 0.1
 
 void main() {
     vec2 p = gl_FragCoord.xy;
@@ -143,24 +143,17 @@ void main() {
 export const imageFragmentShader = `
 uniform vec2 u_resolution;
 uniform sampler2D iChannel0;
-uniform sampler2D iChannel1;
 #define iResolution u_resolution
 #define PI 3.141592653589793
 
 void main() {
     vec2 p = gl_FragCoord.xy;
     vec4 c = texture(iChannel0, p.xy / iResolution.xy);
-    
-    // Noise background
-    vec4 noise = texture(iChannel1, p.xy / iResolution.xy);
-    
+
     vec4 o;
     o.rgb = .6 + .6 * cos(6.3 * atan(c.y,c.x)/(2.*PI) + vec3(0,23,21));
     o.rgb *= c.w/5.;
     o.rgb += clamp(c.z - 1., 0., 1.)/10.;
-    
-    // Mix noise background with shader effect
-    o.rgb = mix(noise.rgb * 0.3, o.rgb, 0.7);
     o.a = 1.;
     gl_FragColor = o;
 }
@@ -168,5 +161,11 @@ void main() {
 
 export const channels = {
   buffera: { iChannel0: 'self' },
-  image: { iChannel0: 'buffera', iChannel1: 'self' }
+  image: { iChannel0: 'buffera' }
+}
+
+// ShaderToy uses linear filtering for the fractional backtrace in Buffer A.
+export const samplers = {
+  buffera: { iChannel0: { filter: 'linear', wrap: 'clamp' } },
+  image: { iChannel0: { filter: 'linear', wrap: 'clamp' } }
 }

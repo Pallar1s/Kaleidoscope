@@ -78,6 +78,32 @@ test('all shaders compile and feedback stays frozen while paused', async ({ page
     repeat: fluidSampler.repeat
   })
 
+  await shaderSelect.selectOption({ label: 'fluidSimGasoline' })
+  await expect(canvas).toHaveAttribute('data-active-effect', 'fluidSimGasoline', { timeout: 20_000 })
+  const gasolineSampler = await canvas.evaluate(element => {
+    const gl = element.getContext('webgl2')
+    gl.activeTexture(gl.TEXTURE0)
+    const sampler = gl.getParameter(gl.SAMPLER_BINDING)
+    if (!sampler) return null
+    return {
+      minFilter: gl.getSamplerParameter(sampler, gl.TEXTURE_MIN_FILTER),
+      magFilter: gl.getSamplerParameter(sampler, gl.TEXTURE_MAG_FILTER),
+      wrapS: gl.getSamplerParameter(sampler, gl.TEXTURE_WRAP_S),
+      wrapT: gl.getSamplerParameter(sampler, gl.TEXTURE_WRAP_T),
+      linear: gl.LINEAR,
+      clamp: gl.CLAMP_TO_EDGE
+    }
+  })
+  expect(gasolineSampler).not.toBeNull()
+  expect(gasolineSampler).toEqual({
+    minFilter: gasolineSampler.linear,
+    magFilter: gasolineSampler.linear,
+    wrapS: gasolineSampler.clamp,
+    wrapT: gasolineSampler.clamp,
+    linear: gasolineSampler.linear,
+    clamp: gasolineSampler.clamp
+  })
+
   await shaderSelect.selectOption({ label: 'balls' })
   await expect(canvas).toHaveAttribute('data-active-effect', 'balls', { timeout: 20_000 })
   expect(await canvas.evaluate(element => {
