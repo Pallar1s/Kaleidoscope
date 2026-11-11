@@ -121,6 +121,7 @@ test('trail overlay visibility is independent from trail emission and shader inp
   const trailCanvas = page.locator('canvas[data-layer="trail"]')
   const trailOverlay = page.getByRole('checkbox', { name: 'Trail overlay' })
   const trailEmission = page.getByRole('checkbox', { name: 'Trail emission' })
+  const toggleCheckbox = checkbox => checkbox.locator('xpath=..').click()
   const alphaPixelCount = () => trailCanvas.evaluate(element => {
     const context = element.getContext('2d')
     const pixels = context.getImageData(0, 0, element.width, element.height).data
@@ -131,9 +132,11 @@ test('trail overlay visibility is independent from trail emission and shader inp
     return count
   })
 
-  await trailOverlay.uncheck()
+  await toggleCheckbox(trailOverlay)
+  await expect(trailOverlay).not.toBeChecked()
   await expect(trailCanvas).toBeHidden()
-  await trailEmission.uncheck()
+  await toggleCheckbox(trailEmission)
+  await expect(trailEmission).not.toBeChecked()
   await page.getByRole('button', { name: 'Clear trail' }).click()
   expect(await alphaPixelCount()).toBe(0)
 
@@ -141,7 +144,8 @@ test('trail overlay visibility is independent from trail emission and shader inp
   await page.waitForTimeout(150)
   expect(await alphaPixelCount()).toBe(0)
 
-  await trailEmission.check()
+  await toggleCheckbox(trailEmission)
+  await expect(trailEmission).toBeChecked()
   await expect.poll(alphaPixelCount, { timeout: 5_000 }).toBeGreaterThan(0)
   await expect(trailCanvas).toBeHidden()
   await page.getByRole('button', { name: 'Pause animation' }).click()
