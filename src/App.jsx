@@ -13,7 +13,8 @@ import {
   resetWebGLEffect,
   resizeCanvas,
   resizeTrailCanvas,
-  resizeWebGL
+  resizeWebGL,
+  shaderUsesChannelSource
 } from './renderer'
 
 const MAX_DELTA_SECONDS = 0.05
@@ -25,7 +26,8 @@ export default function App() {
   const [isPaused, setIsPaused] = useState(true)
   const [shaderEnabled, setShaderEnabled] = useState(true)
   const [jointsEnabled, setJointsEnabled] = useState(true)
-  const [trailEnabled, setTrailEnabled] = useState(true)
+  const [trailOverlayVisible, setTrailOverlayVisible] = useState(true)
+  const [trailEmissionEnabled, setTrailEmissionEnabled] = useState(true)
   const [effect, setEffect] = useState(availableShaders[0]?.name || '')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
   const [selectedPreset, setSelectedPreset] = useState(0)
@@ -53,7 +55,8 @@ export default function App() {
   const speedMultiplierRef = useRef(speedMultiplier)
   const shaderEnabledRef = useRef(shaderEnabled)
   const jointsEnabledRef = useRef(jointsEnabled)
-  const trailEnabledRef = useRef(trailEnabled)
+  const trailOverlayVisibleRef = useRef(trailOverlayVisible)
+  const trailEmissionEnabledRef = useRef(trailEmissionEnabled)
   const effectRef = useRef(effect)
   const resolutionScaleRef = useRef(resolutionScale)
   const trailWidthRef = useRef(trailWidth)
@@ -63,7 +66,8 @@ export default function App() {
   useEffect(() => { speedMultiplierRef.current = speedMultiplier }, [speedMultiplier])
   useEffect(() => { shaderEnabledRef.current = shaderEnabled }, [shaderEnabled])
   useEffect(() => { jointsEnabledRef.current = jointsEnabled }, [jointsEnabled])
-  useEffect(() => { trailEnabledRef.current = trailEnabled }, [trailEnabled])
+  useEffect(() => { trailOverlayVisibleRef.current = trailOverlayVisible }, [trailOverlayVisible])
+  useEffect(() => { trailEmissionEnabledRef.current = trailEmissionEnabled }, [trailEmissionEnabled])
   useEffect(() => { effectRef.current = effect }, [effect])
   useEffect(() => { resolutionScaleRef.current = resolutionScale }, [resolutionScale])
   useEffect(() => { trailWidthRef.current = trailWidth }, [trailWidth])
@@ -136,11 +140,20 @@ export default function App() {
     })
   }, [])
 
-  const handleTrailToggle = useCallback((enabled) => {
-    trailEnabledRef.current = enabled
-    setTrailEnabled(enabled)
-    resetTemporalState(false)
-  }, [resetTemporalState])
+  const handleTrailOverlayToggle = useCallback((visible) => {
+    trailOverlayVisibleRef.current = visible
+    setTrailOverlayVisible(visible)
+  }, [])
+
+  const handleTrailEmissionToggle = useCallback((enabled) => {
+    trailEmissionEnabledRef.current = enabled
+    setTrailEmissionEnabled(enabled)
+  }, [])
+
+  const handleClearTrail = useCallback(() => {
+    clearTrail()
+    needsRenderRef.current = true
+  }, [clearTrail])
 
   const render = useCallback((time) => {
     const webgl = webglRef.current
@@ -171,7 +184,8 @@ export default function App() {
     if (shouldDraw && canvas && trailCanvas && jointsCanvas) {
       const joints = appStateRef.current.calculateJoints(canvas.width, canvas.height)
 
-      if (isRunning && trailEnabledRef.current && webgl) {
+      const trailIsConsumed = trailOverlayVisibleRef.current || shaderUsesChannelSource(effectRef.current, 'trail')
+      if (isRunning && trailEmissionEnabledRef.current && trailIsConsumed && webgl) {
         renderTrail(webgl, joints, prevJointsRef.current, trailWidthRef.current)
       }
 
@@ -332,8 +346,8 @@ export default function App() {
           zIndex: 1
         }}
       />
-      <canvas ref={trailCanvasRef} style={{
-        display: trailEnabled ? 'block' : 'none',
+      <canvas ref={trailCanvasRef} data-layer="trail" style={{
+        display: trailOverlayVisible ? 'block' : 'none',
         position: 'fixed',
         inset: 0,
         width: '100vw',
@@ -398,8 +412,11 @@ export default function App() {
           setJointsEnabled(enabled)
           needsRenderRef.current = true
         }}
-        trailEnabled={trailEnabled}
-        onToggleTrail={handleTrailToggle}
+        trailOverlayVisible={trailOverlayVisible}
+        onToggleTrailOverlay={handleTrailOverlayToggle}
+        trailEmissionEnabled={trailEmissionEnabled}
+        onToggleTrailEmission={handleTrailEmissionToggle}
+        onClearTrail={handleClearTrail}
         effect={effect}
         onEffectChange={handleEffectChange}
         speedMultiplier={speedMultiplier}

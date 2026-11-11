@@ -108,3 +108,41 @@ test('renderer recovers after WebGL context loss', async ({ page }) => {
   await expect.poll(() => canvas.evaluate(element => element.getContext('webgl2').isContextLost())).toBe(false)
   await expect(canvas).toHaveAttribute('data-active-effect', /.+/)
 })
+
+test('trail overlay visibility is independent from trail emission and shader input', async ({ page }) => {
+  await page.goto('/')
+  const shaderCanvas = page.getByLabel('Interactive pixel shader')
+  await expect(shaderCanvas).toBeVisible()
+  await page.getByRole('button', { name: 'Open settings' }).click()
+
+  await page.getByRole('combobox', { name: 'Shader effect' }).selectOption({ label: 'rain' })
+  await expect(shaderCanvas).toHaveAttribute('data-active-effect', 'rain')
+
+  const trailCanvas = page.locator('canvas[data-layer="trail"]')
+  const trailOverlay = page.getByRole('checkbox', { name: 'Trail overlay' })
+  const trailEmission = page.getByRole('checkbox', { name: 'Trail emission' })
+  const alphaPixelCount = () => trailCanvas.evaluate(element => {
+    const context = element.getContext('2d')
+    const pixels = context.getImageData(0, 0, element.width, element.height).data
+    let count = 0
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] > 0) count += 1
+    }
+    return count
+  })
+
+  await trailOverlay.uncheck()
+  await expect(trailCanvas).toBeHidden()
+  await trailEmission.uncheck()
+  await page.getByRole('button', { name: 'Clear trail' }).click()
+  expect(await alphaPixelCount()).toBe(0)
+
+  await page.getByRole('button', { name: 'Play animation' }).click()
+  await page.waitForTimeout(150)
+  expect(await alphaPixelCount()).toBe(0)
+
+  await trailEmission.check()
+  await expect.poll(alphaPixelCount, { timeout: 5_000 }).toBeGreaterThan(0)
+  await expect(trailCanvas).toBeHidden()
+  await page.getByRole('button', { name: 'Pause animation' }).click()
+})

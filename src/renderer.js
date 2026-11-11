@@ -304,6 +304,21 @@ function discoverShaders() {
 
 export const availableShaders = discoverShaders()
 
+const shadersByName = new Map(availableShaders.map(shader => [shader.name, shader]))
+
+export function shaderUsesChannelSource(effect, source) {
+  const shader = shadersByName.get(effect)
+  if (!shader) return false
+
+  if (shader.type === 'single') {
+    return Object.values(shader.channelSources || {}).includes(source)
+  }
+
+  return Object.values(shader.passes).some(pass => (
+    Object.values(pass.channels || {}).includes(source)
+  ))
+}
+
 function destroyGpuProgram(gl, gpuProgram) {
   if (!gpuProgram) return
   gl.deleteVertexArray(gpuProgram.vao)

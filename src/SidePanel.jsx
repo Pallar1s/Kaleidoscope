@@ -1,6 +1,6 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailEnabled, onToggleTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, effectiveResolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
+export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailOverlayVisible, onToggleTrailOverlay, trailEmissionEnabled, onToggleTrailEmission, onClearTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, effectiveResolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
   if (!visible) return null
 
   return (
@@ -92,13 +92,26 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
         <label className={styles.toggle}>
           <input
             type="checkbox"
-              aria-label="Trail"
-            checked={trailEnabled}
-            onChange={(e) => onToggleTrail(e.target.checked)}
+            aria-label="Trail overlay"
+            checked={trailOverlayVisible}
+            onChange={(e) => onToggleTrailOverlay(e.target.checked)}
           />
           <span className={styles.toggleSlider}></span>
         </label>
-        <span className={styles.label}>Trail</span>
+        <span className={styles.label}>Trail Overlay</span>
+      </div>
+
+      <div className={styles.setting}>
+        <label className={styles.toggle}>
+          <input
+            type="checkbox"
+            aria-label="Trail emission"
+            checked={trailEmissionEnabled}
+            onChange={(e) => onToggleTrailEmission(e.target.checked)}
+          />
+          <span className={styles.toggleSlider}></span>
+        </label>
+        <span className={styles.label}>Trail Emission</span>
       </div>
 
       <div className={styles.setting}>
@@ -113,6 +126,17 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
           value={trailWidth}
           onChange={(e) => onTrailWidthChange(parseFloat(e.target.value))}
         />
+      </div>
+
+      <div className={styles.setting}>
+        <button
+          type="button"
+          className={styles.clearTrailButton}
+          onClick={onClearTrail}
+          aria-label="Clear trail"
+        >
+          Clear Trail
+        </button>
       </div>
 
       <div className={styles.setting}>
