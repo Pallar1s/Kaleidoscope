@@ -43,7 +43,12 @@ There is currently no lint or formatting script.
 - `src/SidePanel.jsx` and `src/SidePanel.module.css`: settings panel and its CSS module.
 - `src/AppState.js`: preset loading/validation and articulated-joint simulation.
 - `src/Matrix3x2.js`: small affine-transform utility used by the joint chain.
-- `src/renderer.js`: all Canvas2D/WebGL2 resource management, shader discovery/compilation, single- and multipass rendering, trail upload, and render-size limits.
+- `src/renderer.js`: stable renderer facade re-exporting the public rendering API.
+- `src/rendering/shaderCatalog.js`: shader discovery and channel-source metadata.
+- `src/rendering/webglRenderer.js`: WebGL2 resources, shader compilation, single- and multipass rendering, and trail/emission texture uploads.
+- `src/rendering/canvasRenderer.js`: Canvas2D trail and joint drawing.
+- `src/rendering/renderSize.js`: framebuffer sizing and GPU/pixel-budget limits.
+- `src/rendering/colors.js`: shared `#AARRGGBB` color parsing.
 - `src/shaders/*.js`: shader definitions discovered eagerly with `import.meta.glob`.
 - `presets/presets.json`: data-driven joint presets (34 at the time this context was written).
 - `test/core.test.js`: matrix, preset-schema, and joint-coordinate tests.
