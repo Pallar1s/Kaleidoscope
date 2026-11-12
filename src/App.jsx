@@ -7,6 +7,7 @@ import {
   disposeWebGL,
   getRenderSize,
   initWebGL,
+  MAX_JOINT_EMITTERS,
   renderJoints,
   renderTrail,
   renderWebGL,
@@ -76,6 +77,7 @@ export default function App() {
   const clearTrail = useCallback(() => {
     if (trailCanvasRef.current) clearTrailCanvas(trailCanvasRef.current)
     webglRef.current?.markTrailDirty()
+    webglRef.current?.clearEmission()
   }, [])
 
   const resetTemporalState = useCallback((resetShader = false) => {
@@ -148,6 +150,8 @@ export default function App() {
   const handleTrailEmissionToggle = useCallback((enabled) => {
     trailEmissionEnabledRef.current = enabled
     setTrailEmissionEnabled(enabled)
+    if (!enabled) webglRef.current?.clearEmission()
+    needsRenderRef.current = true
   }, [])
 
   const handleClearTrail = useCallback(() => {
@@ -184,9 +188,12 @@ export default function App() {
     if (shouldDraw && canvas && trailCanvas && jointsCanvas) {
       const joints = appStateRef.current.calculateJoints(canvas.width, canvas.height)
 
-      const trailIsConsumed = trailOverlayVisibleRef.current || shaderUsesChannelSource(effectRef.current, 'trail')
+      const emissionIsConsumed = shaderUsesChannelSource(effectRef.current, 'emission')
+      const trailIsConsumed = trailOverlayVisibleRef.current
+        || shaderUsesChannelSource(effectRef.current, 'trail')
+        || emissionIsConsumed
       if (isRunning && trailEmissionEnabledRef.current && trailIsConsumed && webgl) {
-        renderTrail(webgl, joints, prevJointsRef.current, trailWidthRef.current)
+        renderTrail(webgl, joints, prevJointsRef.current, trailWidthRef.current, emissionIsConsumed)
       }
 
       const lastJoint = joints.at(-1) || null
@@ -207,6 +214,26 @@ export default function App() {
         velocityY = (emitter.y - previousEmitter.y) / deltaSeconds
       }
 
+      const jointEmitters = joints.slice(0, MAX_JOINT_EMITTERS).map((joint, index) => {
+        const previousJoint = prevJointsRef.current?.[index]
+        const isPointerReplacement = mouse.pressed && index === Math.min(joints.length, MAX_JOINT_EMITTERS) - 1
+        return {
+          x: isPointerReplacement ? mouse.x : joint.endX,
+          y: isPointerReplacement ? mouse.y : joint.endY,
+          velocityX: isPointerReplacement
+            ? velocityX
+            : previousJoint && deltaSeconds > 0
+              ? (joint.endX - previousJoint.endX) / deltaSeconds
+              : 0,
+          velocityY: isPointerReplacement
+            ? velocityY
+            : previousJoint && deltaSeconds > 0
+              ? (joint.endY - previousJoint.endY) / deltaSeconds
+              : 0,
+          color: joint.color
+        }
+      })
+
       if (webgl && shaderEnabledRef.current && !contextLostRef.current && !webgl.gl.isContextLost()) {
         const rendered = renderWebGL(
           webgl,
@@ -217,8 +244,9 @@ export default function App() {
           velocityX,
           velocityY,
           deltaSeconds,
-          emitterContinues ? 2 : 0,
-          isRunning
+          mouse.pressed && emitterContinues ? 2 : 0,
+          isRunning,
+          jointEmitters
         )
         canvas.dataset.shaderFrame = String(webgl.frameCounters.get(effectRef.current) || 0)
         canvas.dataset.activeEffect = effectRef.current

@@ -2,7 +2,12 @@ export const common = `
 #define dt 0.15
 #define USE_VORTICITY_CONFINEMENT
 #define VORTICITY_AMOUNT 0.11
+#define MAX_JOINT_EMITTERS 8
 //#define MOUSE_ONLY
+
+uniform int u_jointCount;
+uniform vec4 u_joints[MAX_JOINT_EMITTERS];
+uniform vec4 u_jointColors[MAX_JOINT_EMITTERS];
 
 float mag2(vec2 p){return dot(p,p);}
 vec2 point1(float t) {
@@ -37,13 +42,29 @@ vec4 solveFluid(sampler2D smp, vec2 uv, vec2 w, float time, vec3 mouse, vec3 las
     vec2 newForce = vec2(0);
     #ifndef MOUSE_ONLY
     #if 1
-    newForce.xy += 0.75*vec2(.0003, 0.00015)/(mag2(uv-point1(time))+0.0001);
-    newForce.xy -= 0.75*vec2(.0003, 0.00015)/(mag2(uv-point2(time))+0.0001);
+    newForce.xy += 0.22*vec2(.0003, 0.00015)/(mag2(uv-point1(time))+0.0001);
+    newForce.xy -= 0.22*vec2(.0003, 0.00015)/(mag2(uv-point2(time))+0.0001);
     #else
     newForce.xy += 0.9*vec2(.0003, 0.00015)/(mag2(uv-point1(time))+0.0002);
     newForce.xy -= 0.9*vec2(.0003, 0.00015)/(mag2(uv-point2(time))+0.0002);
     #endif
     #endif
+
+    for (int i = 0; i < MAX_JOINT_EMITTERS; i++)
+    {
+        if (i >= u_jointCount) break;
+
+        vec4 joint = u_joints[i];
+        vec2 jointPosition = vec2(joint.x*w.x, 1.0-joint.y*w.y);
+        vec2 jointVelocity = vec2(joint.z*w.x, -joint.w*w.y);
+        vec2 offset = uv-jointPosition;
+        float falloff = 0.00055/(mag2(offset)+0.00055);
+        float spin = mod(float(i), 2.0) < 1.0 ? 1.0 : -1.0;
+        vec2 swirl = spin*vec2(-offset.y, offset.x)/(length(offset)+0.01);
+        vec2 impulse = clamp(jointVelocity*6.0, vec2(-2.0), vec2(2.0));
+
+        newForce.xy += falloff*(impulse*0.35+swirl*0.025);
+    }
     
     if (mouse.z > 1. && lastMouse.z > 1.)
     {
@@ -200,8 +221,23 @@ void main() {
         col += str*0.0009/(pow(length(uv - mo),1.7)+0.002)*pal2(-u_time*0.7);
     }
     
-    col += .0025/(0.0005+pow(length(uv - point1(u_time)),1.75))*dt*0.12*pal(u_time*0.05 - .0);
-    col += .0025/(0.0005+pow(length(uv - point2(u_time)),1.75))*dt*0.12*pal2(u_time*0.05 + 0.675);
+    col += .0007/(0.0005+pow(length(uv - point1(u_time)),1.75))*dt*0.12*pal(u_time*0.05 - .0);
+    col += .0007/(0.0005+pow(length(uv - point2(u_time)),1.75))*dt*0.12*pal2(u_time*0.05 + 0.675);
+
+    for (int i = 0; i < MAX_JOINT_EMITTERS; i++)
+    {
+        if (i >= u_jointCount) break;
+
+        vec4 joint = u_joints[i];
+        vec2 jointPosition = vec2(joint.x/u_resolution.x, 1.0-joint.y/u_resolution.y);
+        vec2 jointVelocity = vec2(joint.z/u_resolution.x, joint.w/u_resolution.y);
+        float distanceToJoint = length(uv-jointPosition);
+        float speedBoost = 0.75+clamp(length(jointVelocity)*0.35, 0.0, 0.75);
+        float emission = 0.00016/(0.0003+pow(distanceToJoint, 1.7));
+        vec3 color = mix(u_jointColors[i].rgb, pal(float(i)*0.23-u_time*0.035).rgb, 0.22);
+
+        col += emission*speedBoost*u_jointColors[i].a*vec4(color, 1.0);
+    }
     
     if (u_frame < 20)
     {

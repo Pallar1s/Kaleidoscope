@@ -124,7 +124,7 @@ export const channelSources = { iChannel0: 'trail' }
 export const trailMipmaps = true
 ```
 
-Unspecified channels receive a generated repeatable noise texture. A source may be `trail`, `noise`, or `self` (null for a single-pass shader). `trailMipmaps` requests mipmap generation for the uploaded 2D trail texture.
+Unspecified channels receive a generated repeatable noise texture. A source may be `trail`, `emission`, `noise`, or `self` (null for a single-pass shader). `trail` is persistent history, while `emission` contains only the current frame's enabled joint segments. `trailMipmaps` requests mipmap generation for the uploaded 2D trail texture.
 
 ### Multipass shader
 
@@ -144,7 +144,7 @@ export const passSizes = {
 }
 ```
 
-Channel sources can reference `self`, `noise`, `trail`, or another buffer ID. Supported sampler filters are `nearest`/`linear`; wraps are `clamp`/`repeat`/`mirror`. Pass sizes are capped by the main framebuffer dimensions. Buffer passes use ping-pong RGBA16F/HALF_FLOAT FBOs and run in A-B-C-D order; `image` renders to the screen. Multipass effects are unavailable without `EXT_color_buffer_float`.
+Channel sources can reference `self`, `noise`, `trail`, `emission`, or another buffer ID. `trail` is the persistent 2D history; `emission` is a transient texture containing only the current frame's enabled joint segments. Supported sampler filters are `nearest`/`linear`; wraps are `clamp`/`repeat`/`mirror`. Pass sizes are capped by the main framebuffer dimensions. Buffer passes use ping-pong RGBA16F/HALF_FLOAT FBOs and run in A-B-C-D order; `image` renders to the screen. Multipass effects are unavailable without `EXT_color_buffer_float`.
 
 The renderer lazily compiles effects. It adapts legacy GLSL by adding WebGL2 boilerplate, replacing `gl_FragColor`, and replacing `texture2D(...)`, but it is not a general GLSL transpiler. Prefer WebGL2-compatible GLSL and high precision.
 
@@ -153,6 +153,7 @@ Recognized uniforms are:
 - `u_time` (seconds), `u_timeDelta` (seconds), `u_frameRate`, `u_frame`, `u_sampleRate`.
 - `u_resolution` in framebuffer pixels.
 - `u_emitter`, `u_emitterX`, `u_emitterY`, `u_emitterVelX`, `u_emitterVelY`.
+- `u_jointCount`, `u_joints[8]` (`xy` position and `zw` velocity in framebuffer coordinates), and `u_jointColors[8]` (normalized RGBA). Pointer interaction replaces the final joint entry.
 - Shadertoy-style `u_mouse`.
 - `iChannel0` through `iChannel3`.
 

@@ -2,6 +2,7 @@ const JOINTS_WIDTH = 5
 const JOINT_END_SIZE = 10
 const MULTIPASS_ITERATIONS = 1  // Number of render passes for multipass shaders (1 = default, 2+ = more iterations)
 const MAX_RENDER_PIXELS = 2_073_600
+export const MAX_JOINT_EMITTERS = 8
 
 const VERTEX_SHADER_SOURCE = `#version 300 es
 in vec2 a_position;
@@ -123,6 +124,9 @@ function getUniforms(gl, program) {
     u_emitter: gl.getUniformLocation(program, 'u_emitter'),
     u_emitterVelX: gl.getUniformLocation(program, 'u_emitterVelX'),
     u_emitterVelY: gl.getUniformLocation(program, 'u_emitterVelY'),
+    u_jointCount: gl.getUniformLocation(program, 'u_jointCount'),
+    u_joints: gl.getUniformLocation(program, 'u_joints[0]'),
+    u_jointColors: gl.getUniformLocation(program, 'u_jointColors[0]'),
     u_mouse: gl.getUniformLocation(program, 'u_mouse'),
     u_timeDelta: gl.getUniformLocation(program, 'u_timeDelta'),
     u_frameRate: gl.getUniformLocation(program, 'u_frameRate'),
@@ -372,13 +376,26 @@ export function initWebGL(canvas, trailCanvas) {
 
   const trailCtx = trailCanvas.getContext('2d')
   const trailTexture = gl.createTexture()
+  const emissionCanvas = document.createElement('canvas')
+  const emissionCtx = emissionCanvas.getContext('2d')
+  const emissionTexture = gl.createTexture()
   let trailTextureWidth = 0
   let trailTextureHeight = 0
   let lastTrailUploadFrame = -1
   let lastUploadHadMipmaps = false
   let trailDirty = true
+  let emissionTextureWidth = 0
+  let emissionTextureHeight = 0
+  let lastEmissionUploadFrame = -1
+  let emissionDirty = true
 
   gl.bindTexture(gl.TEXTURE_2D, trailTexture)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+
+  gl.bindTexture(gl.TEXTURE_2D, emissionTexture)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
@@ -417,6 +434,40 @@ export function initWebGL(canvas, trailCanvas) {
     trailDirty = false
   }
 
+  function updateEmissionTexture(frame = 0) {
+    if (lastEmissionUploadFrame === frame) return
+    if (!emissionDirty && emissionTextureWidth === emissionCanvas.width && emissionTextureHeight === emissionCanvas.height) {
+      lastEmissionUploadFrame = frame
+      return
+    }
+
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true)
+    gl.bindTexture(gl.TEXTURE_2D, emissionTexture)
+    if (emissionTextureWidth !== emissionCanvas.width || emissionTextureHeight !== emissionCanvas.height) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, emissionCanvas)
+      emissionTextureWidth = emissionCanvas.width
+      emissionTextureHeight = emissionCanvas.height
+    } else {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, emissionCanvas)
+    }
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
+    lastEmissionUploadFrame = frame
+    emissionDirty = false
+  }
+
+  function clearEmission() {
+    emissionCtx.clearRect(0, 0, emissionCanvas.width, emissionCanvas.height)
+    emissionDirty = true
+  }
+
+  function resizeEmission(width, height) {
+    if (emissionCanvas.width === width && emissionCanvas.height === height) return
+    emissionCanvas.width = width
+    emissionCanvas.height = height
+    emissionDirty = true
+    lastEmissionUploadFrame = -1
+  }
+
   return {
     gl,
     shaderPrograms,
@@ -426,6 +477,10 @@ export function initWebGL(canvas, trailCanvas) {
     effectResources: new Map(),
     frameCounters: new Map(),
     samplerCache: new Map(),
+    jointData: {
+      joints: new Float32Array(MAX_JOINT_EMITTERS * 4),
+      colors: new Float32Array(MAX_JOINT_EMITTERS * 4)
+    },
     renderSequence: 0,
     activeEffect: null,
     supportsFloatTargets,
@@ -433,8 +488,14 @@ export function initWebGL(canvas, trailCanvas) {
     trailCtx,
     trailCanvas,
     trailTexture,
+    emissionCtx,
+    emissionTexture,
     updateTrailTexture,
-    markTrailDirty: () => { trailDirty = true }
+    updateEmissionTexture,
+    clearEmission,
+    resizeEmission,
+    markTrailDirty: () => { trailDirty = true },
+    markEmissionDirty: () => { emissionDirty = true }
   }
 }
 
@@ -453,6 +514,9 @@ function setUniforms(gl, uniforms, width, height, time, extra) {
   if (u.u_emitter && Number.isFinite(extra.emitterX) && Number.isFinite(extra.emitterY)) gl.uniform2f(u.u_emitter, extra.emitterX, extra.emitterY)
   if (u.u_emitterVelX && Number.isFinite(extra.emitterVelX)) gl.uniform1f(u.u_emitterVelX, extra.emitterVelX)
   if (u.u_emitterVelY && Number.isFinite(extra.emitterVelY)) gl.uniform1f(u.u_emitterVelY, extra.emitterVelY)
+  if (u.u_jointCount) gl.uniform1i(u.u_jointCount, extra.jointCount)
+  if (u.u_joints && extra.joints) gl.uniform4fv(u.u_joints, extra.joints)
+  if (u.u_jointColors && extra.jointColors) gl.uniform4fv(u.u_jointColors, extra.jointColors)
   if (u.u_mouse) {
     const mouseX = Number.isFinite(extra.emitterX) ? extra.emitterX : 0
     const mouseY = Number.isFinite(extra.emitterY) ? height - extra.emitterY : 0
@@ -575,7 +639,13 @@ function renderBufferPass(webgl, shader, passName, resources, written, width, he
     const source = channels[channelName] || 'noise'
 
     let texture = noiseTexture
-    if (source === 'self' || source === passName) {
+    if (source === 'trail') {
+      webgl.updateTrailTexture(false, extra.uploadFrame)
+      texture = webgl.trailTexture
+    } else if (source === 'emission') {
+      webgl.updateEmissionTexture(extra.uploadFrame)
+      texture = webgl.emissionTexture
+    } else if (source === 'self' || source === passName) {
       texture = input.texture
     } else if (source !== 'noise') {
       const sourcePair = resources.buffers[source]
@@ -605,6 +675,7 @@ export function resizeWebGL(webgl) {
   webgl.frameCounters.clear()
   webgl.runtimeUnavailableEffects.clear()
   webgl.activeEffect = null
+  webgl.resizeEmission(webgl.gl.canvas.width, webgl.gl.canvas.height)
 }
 
 export function disposeWebGL(webgl) {
@@ -619,9 +690,10 @@ export function disposeWebGL(webgl) {
   webgl.samplerCache.clear()
   webgl.gl.deleteTexture(webgl.noiseTexture)
   webgl.gl.deleteTexture(webgl.trailTexture)
+  webgl.gl.deleteTexture(webgl.emissionTexture)
 }
 
-export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016, interactionZ = 0, advanceSimulation = true) {
+export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016, interactionZ = 0, advanceSimulation = true, jointEmitters = []) {
   const { gl, noiseTexture } = webgl
   if (webgl.runtimeUnavailableEffects.has(effect) || gl.isContextLost()) return false
   if (webgl.activeEffect && webgl.activeEffect !== effect) {
@@ -650,6 +722,25 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
   const frame = advanceSimulation ? previousFrame + 1 : previousFrame
   if (advanceSimulation) webgl.frameCounters.set(effect, frame)
   const uploadFrame = ++webgl.renderSequence
+  const usesJointEmitters = shader.type === 'single'
+    ? shader.uniforms.u_jointCount !== null
+    : Object.values(shader.passes).some(pass => pass.uniforms.u_jointCount !== null)
+  const jointCount = usesJointEmitters ? Math.min(jointEmitters.length, MAX_JOINT_EMITTERS) : 0
+  const joints = webgl.jointData.joints
+  const jointColors = webgl.jointData.colors
+  for (let index = 0; index < jointCount; index++) {
+    const joint = jointEmitters[index]
+    const color = parseColor(joint.color)
+    const offset = index * 4
+    joints[offset] = joint.x
+    joints[offset + 1] = joint.y
+    joints[offset + 2] = joint.velocityX
+    joints[offset + 3] = joint.velocityY
+    jointColors[offset] = color.r / 255
+    jointColors[offset + 1] = color.g / 255
+    jointColors[offset + 2] = color.b / 255
+    jointColors[offset + 3] = color.a / 255
+  }
   const extra = {
     emitterX,
     emitterY,
@@ -658,7 +749,11 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     timeDelta: deltaTime,
     frameRate: deltaTime > 0 ? 1 / deltaTime : 60,
     frame,
-    mouseZ: interactionZ
+    mouseZ: interactionZ,
+    uploadFrame,
+    jointCount,
+    joints,
+    jointColors
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null)
   gl.viewport(0, 0, width, height)
@@ -677,6 +772,9 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
       if (source === 'trail') {
         webgl.updateTrailTexture(shader.trailMipmaps, uploadFrame)
         texture = webgl.trailTexture
+      } else if (source === 'emission') {
+        webgl.updateEmissionTexture(uploadFrame)
+        texture = webgl.emissionTexture
       }
       bindChannel(webgl, shader.uniforms, channelName, texture, i)
     }
@@ -718,6 +816,9 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     if (source === 'trail') {
       webgl.updateTrailTexture(false, uploadFrame)
       texture = webgl.trailTexture
+    } else if (source === 'emission') {
+      webgl.updateEmissionTexture(uploadFrame)
+      texture = webgl.emissionTexture
     } else if (source === 'noise') {
       texture = noiseTexture
     } else if (source === 'final' || source === 'self') {
@@ -732,12 +833,14 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
   return true
 }
 
-export function renderTrail(webgl, joints, prevJoints, trailWidth = 2) {
-  const { trailCtx } = webgl
+export function renderTrail(webgl, joints, prevJoints, trailWidth = 2, renderEmission = false) {
+  const { trailCtx, emissionCtx } = webgl
+  if (renderEmission && emissionCtx) webgl.clearEmission()
   if (!trailCtx || !joints || !prevJoints) return
   
   const cssToFramebuffer = trailCtx.canvas.width / Math.max(1, window.innerWidth)
   trailCtx.lineWidth = trailWidth * cssToFramebuffer
+  if (renderEmission && emissionCtx) emissionCtx.lineWidth = trailCtx.lineWidth
   
   let changed = false
   joints.forEach((joint, index) => {
@@ -748,10 +851,18 @@ export function renderTrail(webgl, joints, prevJoints, trailWidth = 2) {
       trailCtx.moveTo(prevJoints[index].endX, prevJoints[index].endY)
       trailCtx.lineTo(joint.endX, joint.endY)
       trailCtx.stroke()
+      if (renderEmission && emissionCtx) {
+        emissionCtx.strokeStyle = trailCtx.strokeStyle
+        emissionCtx.beginPath()
+        emissionCtx.moveTo(prevJoints[index].endX, prevJoints[index].endY)
+        emissionCtx.lineTo(joint.endX, joint.endY)
+        emissionCtx.stroke()
+      }
       changed = true
     }
   })
   if (changed) webgl.markTrailDirty()
+  if (renderEmission && changed) webgl.markEmissionDirty()
 }
 
 export function getRenderSize(gl = null, scale = 1) {
