@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import SidePanel from './SidePanel'
 import AppState from './AppState'
+import { buildFrameEmitters } from './runtime/frameEmitters'
 import {
   availableShaders,
   clearTrail as clearTrailCanvas,
@@ -199,42 +200,21 @@ export default function App() {
         renderTrail(webgl, joints, prevJointsRef.current, trailWidthRef.current, emissionIsConsumed)
       }
 
-      const lastJoint = joints.at(-1) || null
       const mouse = mouseRef.current
-      const emitterSource = mouse.pressed ? 'pointer' : lastJoint ? 'joint' : null
-      const emitter = mouse.pressed
-        ? { x: mouse.x, y: mouse.y }
-        : lastJoint
-          ? { x: lastJoint.endX, y: lastJoint.endY }
-          : null
-
-      let velocityX = 0
-      let velocityY = 0
-      const previousEmitter = prevSimulatedEmitterRef.current
-      const emitterContinues = Boolean(emitter && previousEmitter?.source === emitterSource)
-      if (emitterContinues && deltaSeconds > 0) {
-        velocityX = (emitter.x - previousEmitter.x) / deltaSeconds
-        velocityY = (emitter.y - previousEmitter.y) / deltaSeconds
-      }
-
-      const jointEmitters = joints.slice(0, MAX_JOINT_EMITTERS).map((joint, index) => {
-        const previousJoint = prevJointsRef.current?.[index]
-        const isPointerReplacement = mouse.pressed && index === Math.min(joints.length, MAX_JOINT_EMITTERS) - 1
-        return {
-          x: isPointerReplacement ? mouse.x : joint.endX,
-          y: isPointerReplacement ? mouse.y : joint.endY,
-          velocityX: isPointerReplacement
-            ? velocityX
-            : previousJoint && deltaSeconds > 0
-              ? (joint.endX - previousJoint.endX) / deltaSeconds
-              : 0,
-          velocityY: isPointerReplacement
-            ? velocityY
-            : previousJoint && deltaSeconds > 0
-              ? (joint.endY - previousJoint.endY) / deltaSeconds
-              : 0,
-          color: joint.color
-        }
+      const {
+        emitter,
+        emitterSource,
+        emitterContinues,
+        velocityX,
+        velocityY,
+        jointEmitters
+      } = buildFrameEmitters({
+        joints,
+        previousJoints: prevJointsRef.current,
+        previousEmitter: prevSimulatedEmitterRef.current,
+        pointer: mouse,
+        deltaSeconds,
+        maxEmitters: MAX_JOINT_EMITTERS
       })
 
       if (webgl && shaderEnabledRef.current && !contextLostRef.current && !webgl.gl.isContextLost()) {

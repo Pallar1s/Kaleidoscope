@@ -43,6 +43,7 @@ There is currently no lint or formatting script.
 - `src/SidePanel.jsx` and `src/SidePanel.module.css`: settings panel and its CSS module.
 - `src/AppState.js`: preset loading/validation and articulated-joint simulation.
 - `src/Matrix3x2.js`: small affine-transform utility used by the joint chain.
+- `src/runtime/frameEmitters.js`: pure per-frame emitter selection, velocity, pointer-replacement, and joint-upload preparation.
 - `src/renderer.js`: stable renderer facade re-exporting the public rendering API.
 - `src/rendering/shaderCatalog.js`: shader discovery and channel-source metadata.
 - `src/rendering/webglRenderer.js`: WebGL2 resources, shader compilation, single- and multipass rendering, and trail/emission texture uploads.

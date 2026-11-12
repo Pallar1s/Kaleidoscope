@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import AppState from '../src/AppState.js'
 import { Matrix3x2 } from '../src/Matrix3x2.js'
+import { buildFrameEmitters } from '../src/runtime/frameEmitters.js'
 
 test('joint transform rotates locally and remains anchored at the screen center', () => {
   const center = Matrix3x2.createTranslation(400, 300)
@@ -48,4 +49,78 @@ test('joint simulation uses seconds and framebuffer coordinates', () => {
 
   state.updateJoints(0.01)
   assert.equal(state.joints[0].rotation, 1)
+})
+
+test('frame emitters use the final joint and calculate framebuffer velocities', () => {
+  const result = buildFrameEmitters({
+    joints: [
+      { endX: 10, endY: 20, color: '#FFFF0000' },
+      { endX: 30, endY: 40, color: '#FF00FF00' }
+    ],
+    previousJoints: [
+      { endX: 8, endY: 16 },
+      { endX: 24, endY: 32 }
+    ],
+    previousEmitter: { x: 25, y: 30, source: 'joint' },
+    pointer: { x: 100, y: 200, pressed: false },
+    deltaSeconds: 0.5,
+    maxEmitters: 8
+  })
+
+  assert.deepEqual(result, {
+    emitter: { x: 30, y: 40 },
+    emitterSource: 'joint',
+    emitterContinues: true,
+    velocityX: 10,
+    velocityY: 20,
+    jointEmitters: [
+      { x: 10, y: 20, velocityX: 4, velocityY: 8, color: '#FFFF0000' },
+      { x: 30, y: 40, velocityX: 12, velocityY: 16, color: '#FF00FF00' }
+    ]
+  })
+})
+
+test('pressed pointer replaces the final uploaded joint and respects the emitter limit', () => {
+  const joints = Array.from({ length: 10 }, (_, index) => ({
+    endX: index * 10,
+    endY: index * 20,
+    color: `joint-${index}`
+  }))
+  const result = buildFrameEmitters({
+    joints,
+    previousEmitter: { x: 90, y: 190, source: 'pointer' },
+    pointer: { x: 100, y: 200, pressed: true },
+    deltaSeconds: 0.5,
+    maxEmitters: 8
+  })
+
+  assert.deepEqual(result.emitter, { x: 100, y: 200 })
+  assert.equal(result.emitterSource, 'pointer')
+  assert.equal(result.emitterContinues, true)
+  assert.equal(result.velocityX, 20)
+  assert.equal(result.velocityY, 20)
+  assert.equal(result.jointEmitters.length, 8)
+  assert.deepEqual(result.jointEmitters.at(-1), {
+    x: 100,
+    y: 200,
+    velocityX: 20,
+    velocityY: 20,
+    color: 'joint-7'
+  })
+})
+
+test('changing emitter source resets pointer velocity', () => {
+  const result = buildFrameEmitters({
+    joints: [{ endX: 10, endY: 20, color: '#FFFFFFFF' }],
+    previousEmitter: { x: 5, y: 10, source: 'joint' },
+    pointer: { x: 100, y: 200, pressed: true },
+    deltaSeconds: 0.5,
+    maxEmitters: 8
+  })
+
+  assert.equal(result.emitterContinues, false)
+  assert.equal(result.velocityX, 0)
+  assert.equal(result.velocityY, 0)
+  assert.equal(result.jointEmitters[0].velocityX, 0)
+  assert.equal(result.jointEmitters[0].velocityY, 0)
 })
