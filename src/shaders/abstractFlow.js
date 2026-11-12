@@ -1,5 +1,5 @@
 export const channelSources = {
-  iChannel0: 'emission'
+  iChannel0: 'trail'
 }
 
 export const abstractFlowFragmentShader = `
@@ -15,9 +15,24 @@ vec2 stanh(vec2 a) {
 }
 
 void main() {
+    vec2 trailUv = gl_FragCoord.xy / u_resolution.xy;
+    vec2 trailTexel = 3.0 / u_resolution.xy;
+    vec4 trailCenter = texture(iChannel0, trailUv);
+    vec4 trailLeft = texture(iChannel0, trailUv - vec2(trailTexel.x, 0.0));
+    vec4 trailRight = texture(iChannel0, trailUv + vec2(trailTexel.x, 0.0));
+    vec4 trailDown = texture(iChannel0, trailUv - vec2(0.0, trailTexel.y));
+    vec4 trailUp = texture(iChannel0, trailUv + vec2(0.0, trailTexel.y));
+    vec4 trailGlow = (trailCenter
+                    + 0.35 * (trailLeft + trailRight + trailDown + trailUp)) / 2.4;
+    float trailStrength = smoothstep(0.01, 0.35, trailGlow.a)
+                        * u_jointEmissionStrength;
+    vec2 trailGradient = vec2(trailRight.a - trailLeft.a,
+                              trailUp.a - trailDown.a);
+
     vec2 u = gl_FragCoord.xy;
     vec2 v = u_resolution.xy;
-    u = 0.2*(u+u-v)/v.y;    
+    u = 0.2*(u+u-v)/v.y;
+    u += 0.025 * trailGradient * u_jointEmissionStrength;
      
     vec4 z = vec4(1,2,3,0);
     vec4 o = z;
@@ -39,19 +54,13 @@ void main() {
     o = 25.6 / (min(o, 13.) + 164. / o) 
        - dot(u, u) / 250.;
 
-    vec2 emissionUv = gl_FragCoord.xy / u_resolution.xy;
-    vec2 emissionTexel = 2.0 / u_resolution.xy;
-    vec4 emission = texture(iChannel0, emissionUv);
-    emission += 0.35 * texture(iChannel0, emissionUv + vec2(emissionTexel.x, 0.0));
-    emission += 0.35 * texture(iChannel0, emissionUv - vec2(emissionTexel.x, 0.0));
-    emission += 0.35 * texture(iChannel0, emissionUv + vec2(0.0, emissionTexel.y));
-    emission += 0.35 * texture(iChannel0, emissionUv - vec2(0.0, emissionTexel.y));
-    emission /= 2.4;
-
-    float emissionStrength = smoothstep(0.0, 0.4, emission.a)
-                           * u_jointEmissionStrength;
-    o.rgb *= 1.0 + 0.15 * emissionStrength;
-    o.rgb += 1.35 * emission.rgb * emissionStrength;
+    float trailCore = smoothstep(0.02, 0.5, trailCenter.a)
+                    * u_jointEmissionStrength;
+    o.rgb *= 1.0 + 0.25 * trailStrength;
+    o.rgb += 1.1 * trailGlow.rgb * trailStrength;
+    o.rgb = mix(o.rgb,
+                1.5 * trailCenter.rgb + 0.35 * o.rgb,
+                0.65 * trailCore);
     
     gl_FragColor = o;
 }
