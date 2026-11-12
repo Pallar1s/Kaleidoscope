@@ -153,7 +153,7 @@ Recognized uniforms are:
 - `u_time` (seconds), `u_timeDelta` (seconds), `u_frameRate`, `u_frame`, `u_sampleRate`.
 - `u_resolution` in framebuffer pixels.
 - `u_emitter`, `u_emitterX`, `u_emitterY`, `u_emitterVelX`, `u_emitterVelY`.
-- `u_jointCount`, `u_joints[8]` (`xy` position and `zw` velocity in framebuffer coordinates), and `u_jointColors[8]` (normalized RGBA). Pointer interaction replaces the final joint entry.
+- `u_jointCount`, `u_joints[8]` (`xy` position and `zw` velocity in framebuffer coordinates), `u_jointColors[8]` (normalized RGBA), and `u_jointEmissionStrength` (UI-controlled color intensity). Pointer interaction replaces the final joint entry.
 - Shadertoy-style `u_mouse`.
 - `iChannel0` through `iChannel3`.
 

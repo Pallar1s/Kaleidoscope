@@ -8,6 +8,7 @@ export const common = `
 uniform int u_jointCount;
 uniform vec4 u_joints[MAX_JOINT_EMITTERS];
 uniform vec4 u_jointColors[MAX_JOINT_EMITTERS];
+uniform float u_jointEmissionStrength;
 
 float mag2(vec2 p){return dot(p,p);}
 vec2 point1(float t) {
@@ -233,7 +234,7 @@ void main() {
         vec2 jointVelocity = vec2(joint.z/u_resolution.x, joint.w/u_resolution.y);
         float distanceToJoint = length(uv-jointPosition);
         float speedBoost = 0.75+clamp(length(jointVelocity)*0.35, 0.0, 0.75);
-        float emission = 0.000045/(0.0003+pow(distanceToJoint, 1.7));
+        float emission = 0.00016*u_jointEmissionStrength/(0.0003+pow(distanceToJoint, 1.7));
         vec3 color = mix(u_jointColors[i].rgb, pal(float(i)*0.23-u_time*0.035).rgb, 0.22);
 
         col += emission*speedBoost*u_jointColors[i].a*vec4(color, 1.0);

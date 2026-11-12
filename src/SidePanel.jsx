@@ -1,6 +1,6 @@
 import styles from './SidePanel.module.css'
 
-export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailOverlayVisible, onToggleTrailOverlay, trailEmissionEnabled, onToggleTrailEmission, onClearTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, effectiveResolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
+export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnabled, onToggleShader, jointsEnabled, onToggleJoints, trailOverlayVisible, onToggleTrailOverlay, trailEmissionEnabled, onToggleTrailEmission, onClearTrail, effect, onEffectChange, speedMultiplier, onSpeedChange, jointEmissionStrength, onJointEmissionStrengthChange, presetNames, selectedPreset, onPresetChange, shaderNames, resolutionScale, effectiveResolutionScale, onResolutionScaleChange, trailWidth, onTrailWidthChange }) {
   if (!visible) return null
 
   return (
@@ -59,6 +59,22 @@ export default function SidePanel({ visible, isPaused, onTogglePause, shaderEnab
           value={speedMultiplier}
           disabled={isPaused}
           onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+        />
+      </div>
+
+      <div className={styles.setting}>
+        <label className={styles.label} htmlFor="joint-emission-strength">
+          Joint Emission: {Math.round(jointEmissionStrength * 100)}%
+        </label>
+        <input
+          id="joint-emission-strength"
+          className={styles.slider}
+          type="range"
+          min="0"
+          max="1.5"
+          step="0.05"
+          value={jointEmissionStrength}
+          onChange={(e) => onJointEmissionStrengthChange(parseFloat(e.target.value))}
         />
       </div>
 

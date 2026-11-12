@@ -31,6 +31,7 @@ export default function App() {
   const [trailEmissionEnabled, setTrailEmissionEnabled] = useState(true)
   const [effect, setEffect] = useState(availableShaders[0]?.name || '')
   const [speedMultiplier, setSpeedMultiplier] = useState(1)
+  const [jointEmissionStrength, setJointEmissionStrength] = useState(0.75)
   const [selectedPreset, setSelectedPreset] = useState(0)
   const [resolutionScale, setResolutionScale] = useState(1)
   const [effectiveResolutionScale, setEffectiveResolutionScale] = useState(1)
@@ -54,6 +55,7 @@ export default function App() {
   const contextLostRef = useRef(false)
 
   const speedMultiplierRef = useRef(speedMultiplier)
+  const jointEmissionStrengthRef = useRef(jointEmissionStrength)
   const shaderEnabledRef = useRef(shaderEnabled)
   const jointsEnabledRef = useRef(jointsEnabled)
   const trailOverlayVisibleRef = useRef(trailOverlayVisible)
@@ -65,6 +67,7 @@ export default function App() {
   const mouseRef = useRef({ x: 0, y: 0, pressed: false })
 
   useEffect(() => { speedMultiplierRef.current = speedMultiplier }, [speedMultiplier])
+  useEffect(() => { jointEmissionStrengthRef.current = jointEmissionStrength }, [jointEmissionStrength])
   useEffect(() => { shaderEnabledRef.current = shaderEnabled }, [shaderEnabled])
   useEffect(() => { jointsEnabledRef.current = jointsEnabled }, [jointsEnabled])
   useEffect(() => { trailOverlayVisibleRef.current = trailOverlayVisible }, [trailOverlayVisible])
@@ -246,7 +249,8 @@ export default function App() {
           deltaSeconds,
           mouse.pressed && emitterContinues ? 2 : 0,
           isRunning,
-          jointEmitters
+          jointEmitters,
+          jointEmissionStrengthRef.current
         )
         canvas.dataset.shaderFrame = String(webgl.frameCounters.get(effectRef.current) || 0)
         canvas.dataset.activeEffect = effectRef.current
@@ -451,6 +455,12 @@ export default function App() {
         onSpeedChange={(value) => {
           speedMultiplierRef.current = value
           setSpeedMultiplier(value)
+        }}
+        jointEmissionStrength={jointEmissionStrength}
+        onJointEmissionStrengthChange={(value) => {
+          jointEmissionStrengthRef.current = value
+          setJointEmissionStrength(value)
+          needsRenderRef.current = true
         }}
         presetNames={appStateRef.current.getPresetNames()}
         selectedPreset={selectedPreset}

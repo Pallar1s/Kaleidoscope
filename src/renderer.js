@@ -127,6 +127,7 @@ function getUniforms(gl, program) {
     u_jointCount: gl.getUniformLocation(program, 'u_jointCount'),
     u_joints: gl.getUniformLocation(program, 'u_joints[0]'),
     u_jointColors: gl.getUniformLocation(program, 'u_jointColors[0]'),
+    u_jointEmissionStrength: gl.getUniformLocation(program, 'u_jointEmissionStrength'),
     u_mouse: gl.getUniformLocation(program, 'u_mouse'),
     u_timeDelta: gl.getUniformLocation(program, 'u_timeDelta'),
     u_frameRate: gl.getUniformLocation(program, 'u_frameRate'),
@@ -517,6 +518,7 @@ function setUniforms(gl, uniforms, width, height, time, extra) {
   if (u.u_jointCount) gl.uniform1i(u.u_jointCount, extra.jointCount)
   if (u.u_joints && extra.joints) gl.uniform4fv(u.u_joints, extra.joints)
   if (u.u_jointColors && extra.jointColors) gl.uniform4fv(u.u_jointColors, extra.jointColors)
+  if (u.u_jointEmissionStrength) gl.uniform1f(u.u_jointEmissionStrength, extra.jointEmissionStrength)
   if (u.u_mouse) {
     const mouseX = Number.isFinite(extra.emitterX) ? extra.emitterX : 0
     const mouseY = Number.isFinite(extra.emitterY) ? height - extra.emitterY : 0
@@ -695,7 +697,7 @@ export function disposeWebGL(webgl) {
   webgl.gl.deleteTexture(webgl.emissionTexture)
 }
 
-export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016, interactionZ = 0, advanceSimulation = true, jointEmitters = []) {
+export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX, emitterVelY, deltaTime = 0.016, interactionZ = 0, advanceSimulation = true, jointEmitters = [], jointEmissionStrength = 0.75) {
   const { gl, noiseTexture } = webgl
   if (webgl.runtimeUnavailableEffects.has(effect) || gl.isContextLost()) return false
   if (webgl.activeEffect && webgl.activeEffect !== effect) {
@@ -755,7 +757,8 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     uploadFrame,
     jointCount,
     joints,
-    jointColors
+    jointColors,
+    jointEmissionStrength
   }
   gl.bindFramebuffer(gl.FRAMEBUFFER, null)
   gl.viewport(0, 0, width, height)

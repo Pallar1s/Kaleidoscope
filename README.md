@@ -56,6 +56,7 @@ The browser smoke test compiles every shader in WebGL, verifies the render-size 
 
 - Choose a joint preset and shader from the settings panel.
 - Drag on the canvas to use the pointer as the shader emitter.
+- Joint Emission controls the color intensity contributed by joints in compatible fluid effects; 100% matches the original strength.
 - Trail Overlay only shows or hides the unprocessed 2D trail layer. Shaders that declare a `trail` channel continue receiving the hidden trail texture.
 - Trail Emission controls whether joints add new trail segments; Clear Trail removes the accumulated history explicitly.
 - Pause stops joint motion, shader time, trail accumulation, and feedback passes.

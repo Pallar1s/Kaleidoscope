@@ -77,7 +77,7 @@ void main() {
         vec2 jointVelocity = vec2(joint.z/u_resolution.x, joint.w/u_resolution.y);
         float distanceToJoint = length(uv-jointPosition);
         float speedBoost = 0.75+clamp(length(jointVelocity)*0.35, 0.0, 0.75);
-        float emission = 0.00003/(0.0003+pow(distanceToJoint, 1.7));
+        float emission = 0.00011*u_jointEmissionStrength/(0.0003+pow(distanceToJoint, 1.7));
         vec3 color = mix(u_jointColors[i].rgb, pal(float(i)*0.23-u_time*0.035).rgb, 0.22);
 
         col += emission*speedBoost*u_jointColors[i].a*vec4(color, 1.0);
@@ -86,7 +86,7 @@ void main() {
     vec4 stroke = textureLod(iChannel2, uv, 0.0);
     float strokeStrength = smoothstep(0.01, 0.95, stroke.a);
     float flowBoost = 0.7+0.12*clamp(length(velo), 0.0, 2.5);
-    col += flowBoost*strokeStrength*vec4(stroke.rgb, 1.0);
+    col += u_jointEmissionStrength*flowBoost*strokeStrength*vec4(stroke.rgb, 1.0);
 
     if (u_frame < 20)
     {
