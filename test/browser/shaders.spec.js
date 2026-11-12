@@ -78,6 +78,24 @@ test('all shaders compile and feedback stays frozen while paused', async ({ page
     repeat: fluidSampler.repeat
   })
 
+  await shaderSelect.selectOption({ label: 'fluidSimEmission' })
+  await expect(canvas).toHaveAttribute('data-active-effect', 'fluidSimEmission', { timeout: 20_000 })
+  await page.getByRole('button', { name: 'Play animation' }).click()
+  await expect.poll(() => canvas.evaluate(element => {
+    const probe = document.createElement('canvas')
+    probe.width = 64
+    probe.height = 48
+    const context = probe.getContext('2d')
+    context.drawImage(element, 0, 0, probe.width, probe.height)
+    const pixels = context.getImageData(0, 0, probe.width, probe.height).data
+    let visiblePixels = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] + pixels[index + 1] + pixels[index + 2] > 12) visiblePixels += 1
+    }
+    return visiblePixels
+  }), { timeout: 10_000 }).toBeGreaterThan(10)
+  await page.getByRole('button', { name: 'Pause animation' }).click()
+
   await shaderSelect.selectOption({ label: 'fluidSimGasoline' })
   await expect(canvas).toHaveAttribute('data-active-effect', 'fluidSimGasoline', { timeout: 20_000 })
   const gasolineSampler = await canvas.evaluate(element => {

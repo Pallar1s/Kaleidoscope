@@ -77,7 +77,7 @@ void main() {
         vec2 jointVelocity = vec2(joint.z/u_resolution.x, joint.w/u_resolution.y);
         float distanceToJoint = length(uv-jointPosition);
         float speedBoost = 0.75+clamp(length(jointVelocity)*0.35, 0.0, 0.75);
-        float emission = 0.00011/(0.0003+pow(distanceToJoint, 1.7));
+        float emission = 0.00003/(0.0003+pow(distanceToJoint, 1.7));
         vec3 color = mix(u_jointColors[i].rgb, pal(float(i)*0.23-u_time*0.035).rgb, 0.22);
 
         col += emission*speedBoost*u_jointColors[i].a*vec4(color, 1.0);

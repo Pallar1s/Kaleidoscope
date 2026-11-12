@@ -640,9 +640,11 @@ function renderBufferPass(webgl, shader, passName, resources, written, width, he
 
     let texture = noiseTexture
     if (source === 'trail') {
+      gl.activeTexture(gl.TEXTURE0 + i)
       webgl.updateTrailTexture(false, extra.uploadFrame)
       texture = webgl.trailTexture
     } else if (source === 'emission') {
+      gl.activeTexture(gl.TEXTURE0 + i)
       webgl.updateEmissionTexture(extra.uploadFrame)
       texture = webgl.emissionTexture
     } else if (source === 'self' || source === passName) {
@@ -770,9 +772,11 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
       const source = shader.channelSources[channelName] || 'noise'
       let texture = source === 'self' ? null : noiseTexture
       if (source === 'trail') {
+        gl.activeTexture(gl.TEXTURE0 + i)
         webgl.updateTrailTexture(shader.trailMipmaps, uploadFrame)
         texture = webgl.trailTexture
       } else if (source === 'emission') {
+        gl.activeTexture(gl.TEXTURE0 + i)
         webgl.updateEmissionTexture(uploadFrame)
         texture = webgl.emissionTexture
       }
@@ -814,9 +818,11 @@ export function renderWebGL(webgl, time, effect, emitterX, emitterY, emitterVelX
     const source = imageChannels[channelName]
     let texture = i === 0 ? finalOutput : noiseTexture
     if (source === 'trail') {
+      gl.activeTexture(gl.TEXTURE0 + i)
       webgl.updateTrailTexture(false, uploadFrame)
       texture = webgl.trailTexture
     } else if (source === 'emission') {
+      gl.activeTexture(gl.TEXTURE0 + i)
       webgl.updateEmissionTexture(uploadFrame)
       texture = webgl.emissionTexture
     } else if (source === 'noise') {
