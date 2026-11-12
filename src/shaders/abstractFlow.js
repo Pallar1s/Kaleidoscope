@@ -1,8 +1,14 @@
+export const channelSources = {
+  iChannel0: 'emission'
+}
+
 export const abstractFlowFragmentShader = `
 precision highp float;
 
 uniform float u_time;
 uniform vec2 u_resolution;
+uniform float u_jointEmissionStrength;
+uniform sampler2D iChannel0;
 
 vec2 stanh(vec2 a) {
     return tanh(clamp(a, -40.,  40.));
@@ -32,6 +38,20 @@ void main() {
               
     o = 25.6 / (min(o, 13.) + 164. / o) 
        - dot(u, u) / 250.;
+
+    vec2 emissionUv = gl_FragCoord.xy / u_resolution.xy;
+    vec2 emissionTexel = 2.0 / u_resolution.xy;
+    vec4 emission = texture(iChannel0, emissionUv);
+    emission += 0.35 * texture(iChannel0, emissionUv + vec2(emissionTexel.x, 0.0));
+    emission += 0.35 * texture(iChannel0, emissionUv - vec2(emissionTexel.x, 0.0));
+    emission += 0.35 * texture(iChannel0, emissionUv + vec2(0.0, emissionTexel.y));
+    emission += 0.35 * texture(iChannel0, emissionUv - vec2(0.0, emissionTexel.y));
+    emission /= 2.4;
+
+    float emissionStrength = smoothstep(0.0, 0.4, emission.a)
+                           * u_jointEmissionStrength;
+    o.rgb *= 1.0 + 0.15 * emissionStrength;
+    o.rgb += 1.35 * emission.rgb * emissionStrength;
     
     gl_FragColor = o;
 }
